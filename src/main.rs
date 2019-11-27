@@ -16,6 +16,7 @@ use std::cell::Cell;
 use std::collections::HashSet;
 use std::time::SystemTime;
 use std::time::{Duration, Instant};
+use std::rc::Rc;
 
 fn main() {
     /*     let mut vec = BitVec::from_elem(700, true);
@@ -45,12 +46,15 @@ fn test_order_bucket() {
 
     for x in 0..10 {
         for y in 0..10 {
-            bucket.insert_order(Order::new(
-                Price::new(500),
-                Volume::new(20),
-                OrderSide::ASK,
-                Some(callback),
-            ));
+            bucket.insert_order(
+                Rc::downgrade(&Rc::new(Order::new(
+                    Price::new(500),
+                    Volume::new(20),
+                    OrderSide::ASK,
+                    Some(callback),
+                ))
+            ),
+            );
         }
     }
 
@@ -107,7 +111,7 @@ fn test_order_book() {
     let mut now = Instant::now();
 
     for x in 0..100000 {
-        book.insert(Order {
+        book.insert_order(Order {
             side: if rng.gen_range(0u8, 1u8) == 0 {
                 OrderSide::ASK
             } else {
@@ -120,22 +124,27 @@ fn test_order_book() {
             callback: None,
             filled_volume: Cell::new(Volume::ZERO),
             filled_value: Cell::new(Value::ZERO),
-        })
+        });
     }
 
     println!("Time for order placement: {}", now.elapsed().as_millis());
     now = Instant::now();
 
-    /*  for x in 100..100000 {
-    book.insert(Order {
-        side: OrderSide::BID,
-        limit: Price::new(150),
-        volume: Volume::new(10000),
-        id: rng.gen(),
-        callback: Some(callback),
-        filled_volume: Cell::new(Volume::ZERO),
-        filled_value: Cell::new(Value::ZERO),
-    }); */
-
+    for x in 0..100000 {
+        if (x % 10 < 8) {
+            book.remove_order(x);
+        } else {
+            book.insert_order(Order::new(
+                Price::new(rng.gen_range(1, 750)),
+                Volume::new(1),
+                if rng.gen_range(0u8, 1u8) == 0 {
+                    OrderSide::ASK
+                } else {
+                    OrderSide::BID
+                },
+                None,
+            ));
+        }
+    }
     println!("Time for orderbook change: {}", now.elapsed().as_millis());
 }

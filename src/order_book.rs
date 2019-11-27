@@ -7,31 +7,32 @@ use crate::primitives::*;
 
 use bit_vec::BitVec;
 use intmap::IntMap;
+use std::cell::Cell;
 use std::collections::btree_map::BTreeMap;
 use std::collections::btree_map::RangeMut;
 use std::ops::Range;
-use std::cell::Cell;
 
 use std::rc::Rc;
 use std::result::Result::*;
 
-const DEFAULT_HOT_PRICE_RANGE: u64 = 1024;
-const DEFAULT_HOT_PRICE_MIDPOINT: u64 = 2048;
+const DEFAULT_HOT_PRICE_RANGE: Price = Price{val:1024};
+const DEFAULT_HOT_PRICE_MIDPOINT: Price = Price{val:2048};
 const DEFAULT_HOT_MAP_CAPACITY: usize = 128;
 
 pub struct OrderBook {
-    //hot_set: BitVec,
-    //hot_price_midpoint: u64,
-    //hot_price_range: u64,
+    hot_set: BitVec,
+    hot_price_midpoint: Price,
+    hot_price_range: Price,
 
-    // hot_map: IntMap<Rc<OrderBucket>>,
+    //Store hot orders indexed by hot_set_id
+    hot_map: IntMap<Rc<OrderBucket>>,
+
     /// Store ask orders sorted by price
     cold_ask_map: BTreeMap<Price, OrderBucket>,
 
     /// Store bid orders sorted by price
     cold_bid_map: BTreeMap<Price, OrderBucket>,
     // ask_depth_fenwick_tree: Vec<u64>,
-    
     // bid_depth_fenwick_tree: Vec<u64>
     order_map: IntMap<Rc<Order>>,
 }
@@ -39,13 +40,11 @@ pub struct OrderBook {
 impl Default for OrderBook {
     fn default() -> OrderBook {
         OrderBook {
-            //hot_ask_set: BitVec::from_elem((DEFAULT_HOT_PRICE_RANGE * 2) as usize, false),
-            //hot_bid_set: BitVec::from_elem((DEFAULT_HOT_PRICE_RANGE * 2) as usize, false),
+            hot_set: BitVec::from_elem((DEFAULT_HOT_PRICE_RANGE * 2).get() as usize, false),
+            hot_map: IntMap::with_capacity(DEFAULT_HOT_MAP_CAPACITY),
 
-            //hot_map: IntMap::with_capacity(DEFAULT_HOT_MAP_CAPACITY),
-
-            //hot_price_midpoint: DEFAULT_HOT_PRICE_MIDPOINT,
-            //hot_price_range: DEFAULT_HOT_PRICE_RANGE,
+            hot_price_midpoint: DEFAULT_HOT_PRICE_MIDPOINT,
+            hot_price_range: DEFAULT_HOT_PRICE_RANGE,
             cold_ask_map: BTreeMap::new(),
             cold_bid_map: BTreeMap::new(),
 
@@ -78,7 +77,6 @@ impl OrderBook {
         /// Return the volume that is left over and the value that was payed for all matched volume
         let lambda = |(vol, val): (Volume, Value), (price, bucket): (&Price, &mut OrderBucket)| {
             if order.matches_with(price) {
-                
                 let vol_matched = bucket.match_orders(vol);
                 if vol_matched == vol {
                     //Everything was matched, shortcut the try_fold
@@ -112,14 +110,14 @@ impl OrderBook {
         order.filled_value = Cell::new(new_filled_val);
     }
 
-    /* fn hot_set_index_to_price(&self, index: usize) -> u64 {
-            index as u64 + (self.hot_price_midpoint - self.hot_price_range)
-        }
+    fn hot_set_index_to_price(&self, index: usize) -> Price {
+        Price::new(index as u64) + (self.hot_price_midpoint - self.hot_price_range)
+    }
 
-        fn hot_set_price_to_index(&self, price: u64) -> usize {
-            (price - (self.hot_price_midpoint - self.hot_price_range)) as usize
-        }
-    */
+    fn hot_set_price_to_index(&self, price: Price) -> usize {
+        (price - (self.hot_price_midpoint - self.hot_price_range)).get() as usize
+    }
+
     fn get_or_create_orderbucket(&mut self, order: &Order) -> &mut OrderBucket {
         // Handling only for cold orders, hot orders are missing
         let order_map = match order.side {
@@ -132,11 +130,15 @@ impl OrderBook {
             .or_insert_with(|| OrderBucket::new(order.limit))
     }
 
-    pub fn insert(&mut self, mut order: Order) {
+    pub fn insert_order(&mut self, mut order: Order) {
         self.match_order(&mut order);
 
         if !order.is_filled() {
-            if self.is_hot(order.limit) {
+
+            let order_rc = Rc::new(order);
+
+
+            if self.is_hot(order_rc.limit) {
                 /*
                 if order.side == OrderSide::ASK {
                     self.hot_ask_set
@@ -150,10 +152,15 @@ impl OrderBook {
                 }
                 */
             } else {
-                self.get_or_create_orderbucket(&order).insert_order(order);
+                self.get_or_create_orderbucket(&order_rc).insert_order(Rc::downgrade(&order_rc));
             }
+            self.order_map.insert(order_rc.id, order_rc);
         }
     }
+    pub fn remove_order(&mut self, id: u64){
+        self.order_map.remove(id);
+    }
+
 }
 
 pub fn first_entry(vec: BitVec<u32>) -> Option<u32> {

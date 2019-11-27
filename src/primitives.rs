@@ -1,17 +1,19 @@
-use std::ops::*; #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Copy, Clone)] pub struct Value {
-    val: u64,
+use std::ops::*;
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Copy, Clone)]
+pub struct Value {
+    pub val: u64,
 }
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Copy, Clone)]
 pub struct Volume {
-    val: u64,
+    pub val: u64,
 }
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Copy, Clone)]
 pub struct Price {
-    val: u64,
+    pub val: u64,
 }
 
 impl Value {
-    pub const ZERO: Self = Self{val:0};
+    pub const ZERO: Self = Self { val: 0 };
 
     pub fn new(value: u64) -> Value {
         Value { val: value }
@@ -21,7 +23,7 @@ impl Value {
     }
 }
 impl Volume {
-    pub const ZERO: Self = Self{val:0};
+    pub const ZERO: Self = Self { val: 0 };
 
     pub fn new(value: u64) -> Volume {
         Volume { val: value }
@@ -31,7 +33,7 @@ impl Volume {
     }
 }
 impl Price {
-    pub const ZERO: Self = Self{val:0};
+    pub const ZERO: Self = Self { val: 0 };
 
     pub fn new(value: u64) -> Price {
         Price { val: value }
@@ -46,6 +48,29 @@ impl Mul<Price> for Volume {
 
     fn mul(self, rhs: Price) -> Value {
         Value::new(self.val * rhs.val)
+    }
+}
+
+impl Mul<u64> for Volume {
+    type Output = Self;
+
+    fn mul(self, rhs: u64) -> Self {
+        Self::new(self.val * rhs)
+    }
+}
+impl Mul<u64> for Value {
+    type Output = Self;
+
+    fn mul(self, rhs: u64) -> Self {
+        Self::new(self.val * rhs)
+    }
+}
+
+impl Mul<u64> for Price {
+    type Output = Self;
+
+    fn mul(self, rhs: u64) -> Self {
+        Self::new(self.val * rhs)
     }
 }
 
