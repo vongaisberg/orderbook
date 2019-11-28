@@ -14,9 +14,9 @@ use bit_vec::BitVec;
 use rand::Rng;
 use std::cell::Cell;
 use std::collections::HashSet;
+use std::rc::Rc;
 use std::time::SystemTime;
 use std::time::{Duration, Instant};
-use std::rc::Rc;
 
 fn main() {
     /*     let mut vec = BitVec::from_elem(700, true);
@@ -46,15 +46,12 @@ fn test_order_bucket() {
 
     for x in 0..10 {
         for y in 0..10 {
-            bucket.insert_order(
-                Rc::downgrade(&Rc::new(Order::new(
-                    Price::new(500),
-                    Volume::new(20),
-                    OrderSide::ASK,
-                    Some(callback),
-                ))
-            ),
-            );
+            bucket.insert_order(Rc::downgrade(&Rc::new(Order::new(
+                Price::new(500),
+                Volume::new(20),
+                OrderSide::ASK,
+                Some(callback),
+            ))));
         }
     }
 
@@ -131,7 +128,7 @@ fn test_order_book() {
     now = Instant::now();
 
     for x in 0..100000 {
-        if (x % 10 < 8) {
+        if x % 10 < 8 {
             book.remove_order(x);
         } else {
             book.insert_order(Order::new(

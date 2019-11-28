@@ -15,8 +15,8 @@ use std::ops::Range;
 use std::rc::Rc;
 use std::result::Result::*;
 
-const DEFAULT_HOT_PRICE_RANGE: Price = Price{val:1024};
-const DEFAULT_HOT_PRICE_MIDPOINT: Price = Price{val:2048};
+const DEFAULT_HOT_PRICE_RANGE: Price = Price { val: 1024 };
+const DEFAULT_HOT_PRICE_MIDPOINT: Price = Price { val: 2048 };
 const DEFAULT_HOT_MAP_CAPACITY: usize = 128;
 
 pub struct OrderBook {
@@ -134,9 +134,7 @@ impl OrderBook {
         self.match_order(&mut order);
 
         if !order.is_filled() {
-
             let order_rc = Rc::new(order);
-
 
             if self.is_hot(order_rc.limit) {
                 /*
@@ -152,15 +150,15 @@ impl OrderBook {
                 }
                 */
             } else {
-                self.get_or_create_orderbucket(&order_rc).insert_order(Rc::downgrade(&order_rc));
+                self.get_or_create_orderbucket(&order_rc)
+                    .insert_order(Rc::downgrade(&order_rc));
             }
             self.order_map.insert(order_rc.id, order_rc);
         }
     }
-    pub fn remove_order(&mut self, id: u64){
+    pub fn remove_order(&mut self, id: u64) {
         self.order_map.remove(id);
     }
-
 }
 
 pub fn first_entry(vec: BitVec<u32>) -> Option<u32> {
