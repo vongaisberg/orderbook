@@ -23,6 +23,7 @@ pub struct Order {
     pub volume: Volume,
     pub side: OrderSide,
     pub id: u64,
+    pub immediate_or_cancel: bool,
 
     pub callback: Option<fn(OrderEvent)>,
 
@@ -42,6 +43,7 @@ impl Order {
         volume: Volume,
         side: OrderSide,
         callback: Option<fn(OrderEvent)>,
+        immediate_or_cancel: bool,
     ) -> Order {
         let mut rng = rand::thread_rng();
         Order {
@@ -52,6 +54,7 @@ impl Order {
             callback: callback,
             filled_volume: Cell::new(Volume::ZERO),
             filled_value: Cell::new(Value::ZERO),
+            immediate_or_cancel: immediate_or_cancel,
         }
     }
 

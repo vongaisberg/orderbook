@@ -24,7 +24,7 @@ fn main() {
     vec.set(1, false);
     println!("First element: {}", order_book::first_entry(vec).unwrap()); */
 
-    test_order_book();
+    benchmark_order_book();
 }
 
 fn test_order_bucket() {
@@ -51,6 +51,7 @@ fn test_order_bucket() {
                 Volume::new(20),
                 OrderSide::ASK,
                 Some(callback),
+                false,
             ))));
         }
     }
@@ -101,13 +102,13 @@ fn callback(event: OrderEvent) {
     println!("OrderEvent: {:?}", event)
 }
 
-fn test_order_book() {
+fn benchmark_order_book() {
     let mut rng = rand::thread_rng();
     let mut book = OrderBook::new();
 
     let mut now = Instant::now();
 
-    for x in 0..100000 {
+    for x in 0..50000 {
         book.insert_order(Order {
             side: if rng.gen_range(0u8, 1u8) == 0 {
                 OrderSide::ASK
@@ -115,12 +116,13 @@ fn test_order_book() {
                 OrderSide::BID
             },
             limit: Price::new(rng.gen_range(1, 750)),
-            volume: Volume::new(1),
+            volume: Volume::new(1000),
             id: x,
             //callback: Some(callback),
             callback: None,
             filled_volume: Cell::new(Volume::ZERO),
             filled_value: Cell::new(Value::ZERO),
+            immediate_or_cancel: false,
         });
     }
 
@@ -128,20 +130,43 @@ fn test_order_book() {
     now = Instant::now();
 
     for x in 0..100000 {
-        if x % 10 < 8 {
+        if x % 18 < 6 {
             book.remove_order(x);
         } else {
             book.insert_order(Order::new(
-                Price::new(rng.gen_range(1, 750)),
+                Price::new(x % 750),
                 Volume::new(1),
-                if rng.gen_range(0u8, 1u8) == 0 {
+                if x % 2 == 0 {
                     OrderSide::ASK
                 } else {
                     OrderSide::BID
                 },
                 None,
+                x % 12 < 3,
             ));
         }
     }
     println!("Time for orderbook change: {}", now.elapsed().as_millis());
+}
+
+fn test_order_book() {
+    let mut book = OrderBook::new();
+
+    for x in 5..10 {
+        book.insert_order(Order::new(
+            Price::new(x),
+            Volume::new(1),
+            OrderSide::ASK,
+            Some(callback),
+            false,
+        ));
+    }
+    println!("t");
+    book.insert_order(Order::new(
+        Price::new(8),
+        Volume::new(1),
+        OrderSide::BID,
+        Some(callback),
+        false,
+    ));
 }
