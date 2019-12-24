@@ -3,8 +3,8 @@ use crate::primitives::*;
 
 use intmap::IntMap;
 use std::cmp::Ordering;
-use std::collections::{HashMap, VecDeque};
-use std::hash::{Hash, Hasher};
+use std::collections::{VecDeque};
+//use std::hash::{Hash, Hasher};
 use std::rc::{Rc, Weak};
 
 const DEFAULT_CAPACITY: usize = 2 ^ 8 - 1;
@@ -80,8 +80,8 @@ impl OrderBucket {
     /// Match as many orders as possible with a given amount of volume
     ///
     /// #Returns how much volume was matched
-    pub fn match_orders(&mut self, volume: Volume) -> (Volume) {
-        let mut unmatched_volume = volume;
+    pub fn match_orders(&mut self, volume: &Volume) -> (Volume) {
+        let mut unmatched_volume = volume.clone();
         while unmatched_volume.get() > 0 && !self.order_queue.is_empty() {
             match self.order_queue.front().unwrap().upgrade() {
                 Some(order_weak) => {
@@ -110,6 +110,6 @@ impl OrderBucket {
             }
         }
 
-        volume - unmatched_volume
+        *volume - unmatched_volume
     }
 }
