@@ -1,13 +1,24 @@
 use rand::Rng;
 use std::cell::Cell;
-use std::rc::Rc;
+use std::ops::Neg;
 
 use crate::primitives::*;
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum OrderSide {
     ASK,
     BID,
+}
+
+
+impl Neg for OrderSide {
+    type Output = Self;
+     fn neg(self) -> Self {
+        match self {
+            Self::ASK => Self::BID,
+            Self::BID => Self::ASK,
+        }
+    }
 }
 
 #[derive(Debug)]
