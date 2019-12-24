@@ -24,7 +24,12 @@ fn main() {
     vec.set(1, false);
     println!("First element: {}", order_book::first_entry(vec).unwrap()); */
 
-    benchmark_order_book();
+
+
+
+    //test_hot_set_index();
+    //benchmark_order_book();
+    test_order_book();
 }
 
 fn test_order_bucket() {
@@ -66,7 +71,7 @@ fn test_order_bucket() {
     for x in 0..10 {
         for y in 0..5 {
             //bucket.remove_order(&(set_x[sort_x[x]] / 2 + set_y[sort_y[y]] / 2));
-            bucket.match_orders(Volume::new(5));
+            bucket.match_orders(&Volume::new(5));
             /* bucket.insert_order(Order {
                     side: OrderSide::ASK,
                     limit: Price::new(500),
@@ -102,13 +107,23 @@ fn callback(event: OrderEvent) {
     println!("OrderEvent: {:?}", event)
 }
 
+fn test_hot_set_index() {
+    for x in 1..10 {
+
+        let book = OrderBook::new();
+
+        println!("x={:?}, result={:?}",x,book.hot_set_price_to_index(&Order::new(book.hot_set_index_to_price(x, &OrderSide::BID), Volume::ZERO, OrderSide::BID, None, false)));
+
+    }
+}
+
 fn benchmark_order_book() {
     let mut rng = rand::thread_rng();
     let mut book = OrderBook::new();
 
     let mut now = Instant::now();
 
-    for x in 0..50000 {
+    for x in 0..10000 {
         book.insert_order(Order {
             side: if rng.gen_range(0u8, 1u8) == 0 {
                 OrderSide::ASK
@@ -129,21 +144,27 @@ fn benchmark_order_book() {
     println!("Time for order placement: {}", now.elapsed().as_millis());
     now = Instant::now();
 
-    for x in 0..100000 {
+    for x in 0..10000 {
+        println!("x={:?}", x);
         if x % 18 < 6 {
+            println!("removing");
             book.remove_order(x);
+            println!("removed");
         } else {
+            println!("inserting");
             book.insert_order(Order::new(
-                Price::new(x % 750),
+                Price::new((x % 750)+1),
                 Volume::new(1),
-                if x % 2 == 0 {
-                    OrderSide::ASK
-                } else {
+                //if x % 2 == 0 {
+                //    OrderSide::ASK
+                //} else {
                     OrderSide::BID
-                },
+                //}
+                ,
                 None,
                 x % 12 < 3,
             ));
+            println!("inserted");
         }
     }
     println!("Time for orderbook change: {}", now.elapsed().as_millis());
