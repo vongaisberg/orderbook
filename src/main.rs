@@ -24,12 +24,9 @@ fn main() {
     vec.set(1, false);
     println!("First element: {}", order_book::first_entry(vec).unwrap()); */
 
-
-
-
     //test_hot_set_index();
-    //benchmark_order_book();
-    test_order_book();
+    benchmark_order_book();
+    //test_order_book();
 }
 
 fn test_order_bucket() {
@@ -109,11 +106,19 @@ fn callback(event: OrderEvent) {
 
 fn test_hot_set_index() {
     for x in 1..10 {
-
         let book = OrderBook::new();
 
-        println!("x={:?}, result={:?}",x,book.hot_set_price_to_index(&Order::new(book.hot_set_index_to_price(x, &OrderSide::BID), Volume::ZERO, OrderSide::BID, None, false)));
-
+        println!(
+            "x={:?}, result={:?}",
+            x,
+            book.hot_set_price_to_index(&Order::new(
+                book.hot_set_index_to_price(x, &OrderSide::BID),
+                Volume::ZERO,
+                OrderSide::BID,
+                None,
+                false
+            ))
+        );
     }
 }
 
@@ -121,9 +126,32 @@ fn benchmark_order_book() {
     let mut rng = rand::thread_rng();
     let mut book = OrderBook::new();
 
+    
+
+    let loops = 10_000_000;
+
+    let mut r1 = Vec::<u64>::with_capacity(loops);
+
+    let mut r2 = Vec::<bool>::with_capacity(loops);
+
+    let mut r3 = Vec::<bool>::with_capacity(loops);
+
+    let mut r4 = Vec::<bool>::with_capacity(loops);
+
+    let mut r5 = Vec::<u64>::with_capacity(loops);
+
+    for x in 0..loops {
+        
+        r1.insert(x, rng.gen_range(1, 750));
+        r2.insert(x, rng.gen_range(0u64, 1u64) == 0);
+        r3.insert(x, rng.gen_range(0, 18) < 6);
+        r4.insert(x, rng.gen_range(0, 12) < 3);
+        r5.insert(x, rng.gen_range(0, 100));
+    }
+
     let mut now = Instant::now();
 
-    for x in 0..10000 {
+    for x in 0..2000 {
         book.insert_order(Order {
             side: if rng.gen_range(0u8, 1u8) == 0 {
                 OrderSide::ASK
@@ -144,27 +172,26 @@ fn benchmark_order_book() {
     println!("Time for order placement: {}", now.elapsed().as_millis());
     now = Instant::now();
 
-    for x in 0..10000 {
-        println!("x={:?}", x);
-        if x % 18 < 6 {
-            println!("removing");
+    for x in 0..(loops as u64) {
+        //  println!("x={:?}", x);
+        if r3[x as usize] {
+            // println!("removing");
             book.remove_order(x);
-            println!("removed");
+        //println!("removed");
         } else {
-            println!("inserting");
+            //println!("inserting");
             book.insert_order(Order::new(
-                Price::new((x % 750)+1),
-                Volume::new(1),
-                //if x % 2 == 0 {
-                //    OrderSide::ASK
-                //} else {
+                Price::new((r1[x as usize] % 750) + 1),
+                Volume::new(r5[x as usize]),
+                if r2[x as usize]  {
+                    OrderSide::ASK
+                } else {
                     OrderSide::BID
-                //}
-                ,
+                },
                 None,
-                x % 12 < 3,
+                r4[x as usize],
             ));
-            println!("inserted");
+            //println!("inserted");
         }
     }
     println!("Time for orderbook change: {}", now.elapsed().as_millis());
