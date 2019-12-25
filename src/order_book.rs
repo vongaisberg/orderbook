@@ -12,6 +12,7 @@ use std::collections::HashMap;
 use intmap::IntMap;
 use std::cell::{Cell, RefCell};
 use std::collections::btree_map::BTreeMap;
+use std::collections::hash_set::HashSet;
 //use std::collections::btree_map::RangeMut;
 //use std::ops::Range;
 use std::ops::Neg;
@@ -19,8 +20,8 @@ use std::ops::Neg;
 use std::rc::Rc;
 use std::result::Result::*;
 
-const DEFAULT_HOT_PRICE_RANGE: Price = Price { val: 1024 };
-const DEFAULT_HOT_PRICE_BASE: Price = Price { val: 1 };
+const DEFAULT_HOT_PRICE_RANGE: Price = Price { val: 10 };
+const DEFAULT_HOT_PRICE_BASE: Price = Price { val: 375 };
 const DEFAULT_HOT_MAP_CAPACITY: usize = 128;
 
 pub struct OrderBook {
@@ -42,14 +43,15 @@ pub struct OrderBook {
     cold_bid_map: BTreeMap<Price, OrderBucket>,
     // ask_depth_fenwick_tree: Vec<u64>,
     // bid_depth_fenwick_tree: Vec<u64>
-    order_map: IntMap<Rc<Order>>,
+    order_map: HashMap<u64, Rc<Order>>,
 }
 
 impl Default for OrderBook {
     fn default() -> OrderBook {
         OrderBook {
-            hot_ask_set: RefCell::new(BitVec::from_elem((DEFAULT_HOT_PRICE_RANGE).get() as usize, false)),
-            hot_bid_set: RefCell::new(BitVec::from_elem((DEFAULT_HOT_PRICE_RANGE).get() as usize, false)),
+            // The size has to be hot_price_range + 1, because the hot_price_base has to be included xD
+            hot_ask_set: RefCell::new(BitVec::from_elem((DEFAULT_HOT_PRICE_RANGE + Price::new(1)).get() as usize, false)),
+            hot_bid_set: RefCell::new(BitVec::from_elem((DEFAULT_HOT_PRICE_RANGE + Price::new(1)).get() as usize, false)),
 
             hot_ask_map: HashMap::with_capacity(DEFAULT_HOT_MAP_CAPACITY),
             hot_bid_map: HashMap::with_capacity(DEFAULT_HOT_MAP_CAPACITY),
@@ -59,7 +61,7 @@ impl Default for OrderBook {
             cold_ask_map: BTreeMap::new(),
             cold_bid_map: BTreeMap::new(),
 
-            order_map: IntMap::new(),
+            order_map: HashMap::with_capacity(1000),
         }
     }
 }
@@ -113,22 +115,25 @@ impl OrderBook {
         //Base price and range of the hot set
         let (hot_base, hot_range) = (self.hot_price_base.clone(), self.hot_price_range.clone());
 
+        //List of hot bucket ondices which had something in them but are now empty
+        let mut empty_buckets = HashSet::<usize>::new();
+
         let (new_filled_vol, new_filled_val) = match hot_set.borrow_mut()
             .iter()
             .enumerate()
             .filter(|(_n, b)| *b)
             .map(|(n, _b)| n.clone())
             .try_for_each(|n| {
-                println!("Looking at hot_set entry {:?}", n);
+               // println!("Looking at hot_set entry {:?}", n);
 
-                println!("index={:?}", Self::hot_set_index_to_price_by_range(n, &order.side.clone().neg(), hot_base, hot_range));
+              //  println!("index={:?}", Self::hot_set_index_to_price_by_range(n, &order.side.clone().neg(), hot_base, hot_range));
                 let bucket = hot_map.get_mut(&Self::hot_set_index_to_price_by_range(n, &order.side.clone().neg(), hot_base, hot_range).get()).unwrap();
 
                 if order.matches_with(&bucket.price) {
                     let vol_matched = bucket.match_orders(&vol);
 
                     if bucket.total_volume.get() == 0 {
-                         hot_set.borrow_mut().set(n, false);
+                         empty_buckets.insert(n);
                     }
 
                     val += vol_matched * bucket.price;
@@ -161,6 +166,11 @@ impl OrderBook {
                 }
             }
         };
+
+        //Mark all newly empty buckets
+        for n in empty_buckets.iter() {
+            hot_set.borrow_mut().set(*n, false);
+        }
 
         order.filled_volume = Cell::new(new_filled_vol);
         order.filled_value = Cell::new(new_filled_val);
@@ -235,9 +245,9 @@ impl OrderBook {
     }
 
     pub fn insert_order(&mut self, mut order: Order) {
-        println!("matching");
+       // println!("matching");
         self.match_order(&mut order);
-        println!("matched");
+       // println!("matched");
 
 
         if !order.is_filled() {
@@ -258,7 +268,7 @@ impl OrderBook {
         }
     }
     pub fn remove_order(&mut self, id: u64) {
-        self.order_map.remove(id);
+        self.order_map.remove(&id);
     }
 }
 
