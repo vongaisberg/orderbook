@@ -3,7 +3,7 @@ use crate::primitives::*;
 
 use intmap::IntMap;
 use std::cmp::Ordering;
-use std::collections::{VecDeque};
+use std::collections::{VecDeque, HashMap};
 //use std::hash::{Hash, Hasher};
 use std::rc::{Rc, Weak};
 
@@ -19,7 +19,7 @@ pub struct OrderBucket {
     /// The inner ```Weak``` is for orders that get canceled from the orderbook (manual cancel)
     /// The outer ```Weak``` is for order that get canceled from the order_bucket (canceled because they were filled)
     order_queue: VecDeque<Weak<Weak<Order>>>,
-    order_map: IntMap<Rc<Weak<Order>>>,
+    order_map: HashMap<u64, Rc<Weak<Order>>>,
 }
 
 impl PartialOrd for OrderBucket {
@@ -41,7 +41,7 @@ impl OrderBucket {
             total_volume: Volume::new(0),
             size: 0,
             order_queue: VecDeque::with_capacity(DEFAULT_CAPACITY),
-            order_map: IntMap::with_capacity(DEFAULT_CAPACITY),
+            order_map: HashMap::with_capacity(DEFAULT_CAPACITY),
         }
     }
 
@@ -64,7 +64,7 @@ impl OrderBucket {
     }
 
     pub fn remove_order(&mut self, id: &u64) -> Option<Volume> {
-        match self.order_map.remove(*id) {
+        match self.order_map.remove(id) {
             Some(order_weak) => match order_weak.upgrade() {
                 Some(order) => {
                     order.cancel();
