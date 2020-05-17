@@ -10,12 +10,12 @@ use crate::order::*;
 use crate::order_book::*;
 use crate::order_bucket::*;
 use crate::primitives::*;
-use bit_vec::BitVec;
+
 use rand::Rng;
 use std::cell::Cell;
-use std::collections::HashSet;
+
 use std::rc::Rc;
-use std::time::SystemTime;
+
 use std::time::{Duration, Instant};
 
 use std::{thread, time};
@@ -48,8 +48,8 @@ fn test_order_bucket() {
 
     let mut now = Instant::now();
 
-    for x in 0..10 {
-        for y in 0..10 {
+    for _x in 0..10 {
+        for _y in 0..10 {
             bucket.insert_order(Rc::downgrade(&Rc::new(Order::new(
                 Price::new(500),
                 Volume::new(20),
@@ -67,8 +67,8 @@ fn test_order_bucket() {
         bucket.size, bucket.total_volume
     );
 
-    for x in 0..10 {
-        for y in 0..5 {
+    for _x in 0..10 {
+        for _y in 0..5 {
             //bucket.remove_order(&(set_x[sort_x[x]] / 2 + set_y[sort_y[y]] / 2));
             bucket.match_orders(&Volume::new(5));
             /* bucket.insert_order(Order {
@@ -106,23 +106,6 @@ fn callback(event: OrderEvent) {
     println!("OrderEvent: {:?}", event)
 }
 
-fn test_hot_set_index() {
-    for x in 1..10 {
-        let book = OrderBook::new();
-
-        println!(
-            "x={:?}, result={:?}",
-            x,
-            book.hot_set_price_to_index(&Order::new(
-                book.hot_set_index_to_price(x, &OrderSide::BID),
-                Volume::ZERO,
-                OrderSide::BID,
-                None,
-                false
-            ))
-        );
-    }
-}
 
 fn benchmark_order_book() {
     let mut rng = rand::thread_rng();
@@ -186,7 +169,7 @@ fn benchmark_order_book() {
 
     println!("Time for order placement: {}", now.elapsed().as_millis());
     now = Instant::now();
-    let mut y = 0;
+    let _y = 0;
     for x in 0..(loops as u64) {
         //  println!("x={:?}", x);
         if r3[x as usize] {
