@@ -1,11 +1,10 @@
 use crate::order::*;
 use crate::primitives::*;
 
-
 use std::cmp::Ordering;
-use std::collections::{VecDeque};
+use std::collections::VecDeque;
 //use std::hash::{Hash, Hasher};
-use std::rc::{Weak};
+use std::rc::{Rc, Weak};
 
 const DEFAULT_CAPACITY: usize = 2 ^ 8 - 1;
 
@@ -46,27 +45,20 @@ impl OrderBucket {
         }
     }
 
-    pub fn insert_order(&mut self, order: Weak<Order>) {
-        match order.upgrade() {
-            Some(order_up) => {
-                //map let order_rc = Rc::new(order);
+    pub fn insert_order(&mut self, order: &Rc<Order>) {
+        self.size += 1;
+        self.total_volume += order.volume;
 
-                self.size += 1;
-                self.total_volume += order_up.volume;
-
-                //map   self.order_queue.push_back(Rc::downgrade(&order_rc));
-                self.order_queue.push_back(order);
-                //map  self.order_map.insert(order_up.id, order_rc);
-                //  println!("Order insertion: Queue: {}, Map: {}", t1.as_nanos(), (now.elapsed()-t1).as_nanos());
-            }
-            None => (),
-        }
+        //map   self.order_queue.push_back(Rc::downgrade(&order_rc));
+        self.order_queue.push_back(Rc::downgrade(order));
+        //map  self.order_map.insert(order_up.id, order_rc);
+        //  println!("Order insertion: Queue: {}, Map: {}", t1.as_nanos(), (now.elapsed()-t1).as_nanos());
     }
 
     /*map
     pub fn remove_order(&mut self, id: &u64) -> Option<Volume> {
         match self.order_map.remove(id) {
-            Some(order_weak) => match order_weak.upgrade() {
+            Some(order) => match order.upgrade() {
                 Some(order) => {
                     order.cancel();
                     self.size -= 1;
@@ -86,15 +78,16 @@ impl OrderBucket {
     pub fn match_orders(&mut self, volume: &Volume) -> Volume {
         let mut unmatched_volume = volume.clone();
         while unmatched_volume.get() > 0 && !self.order_queue.is_empty() {
+            println!("Found something to match with");
             match self.order_queue.front().unwrap().upgrade() {
-                Some(order_weak) => {
-                    //map match order_weak.upgrade() {
+                Some(order) => {
+                    //map match order.upgrade() {
                     //map    Some(order) => {
-                    //  println!("Trying to match with {:?}", order);
-                    let filled_volume = order_weak.fill(unmatched_volume, self.price);
+                    println!("Trying to match with {:?}", order);
+                    let filled_volume = order.fill(unmatched_volume, self.price);
                     unmatched_volume -= filled_volume;
                     self.total_volume -= filled_volume;
-                    if order_weak.is_filled() {
+                    if order.is_filled() {
                         self.order_queue.remove(0);
                         self.size -= 1;
                     }
@@ -110,7 +103,6 @@ impl OrderBucket {
                 //Remove elements that were removed from the bucket using ```remove_order```
                 None => {
                     self.order_queue.remove(0);
-                    
                 }
             }
         }

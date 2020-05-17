@@ -121,7 +121,7 @@ impl OrderBook {
                 let order_rc = Rc::new(order);
 
                 self.get_or_create_cold_orderbucket(&order_rc)
-                    .insert_order(Rc::downgrade(&order_rc));
+                    .insert_order(&order_rc);
 
                 self.order_map.insert(order_rc.id, order_rc);
             }

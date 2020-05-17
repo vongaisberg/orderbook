@@ -13,6 +13,7 @@ use crate::primitives::*;
 
 use rand::Rng;
 use std::cell::Cell;
+use std::collections::HashSet;
 
 use std::rc::Rc;
 
@@ -31,34 +32,34 @@ fn main() {
     //test_order_book();
 }
 
+#[test]
+fn test_order() {
+    let order = Order::new(Price::new(1), Volume::new(1), OrderSide::ASK, None, false);
+    let filled_volume = order.fill(Volume::new(1), Price::new(1));
+    assert_eq!(filled_volume, Volume::new(1));
+}
+
+#[test]
 fn test_order_bucket() {
     let mut rng = rand::thread_rng();
     let mut bucket = OrderBucket::new(Price::new(500));
-    let mut set_x = [0u64; 1000];
-    let mut set_y = [0u64; 1000];
-    let mut sort_x = [0usize; 1000];
-    let mut sort_y = [0usize; 1000];
-
-    for i in 0..1000 {
-        set_x[i] = rng.gen();
-        set_y[i] = rng.gen();
-        sort_x[i] = rng.gen_range(0, 1000);
-        sort_y[i] = rng.gen_range(0, 500);
-    }
 
     let mut now = Instant::now();
 
-    for _x in 0..10 {
-        for _y in 0..10 {
-            bucket.insert_order(Rc::downgrade(&Rc::new(Order::new(
+    let mut order_vec = Vec::new();
+    
+        for _y in 0..100 {
+            let order = Rc::new(Order::new(
                 Price::new(500),
                 Volume::new(20),
                 OrderSide::ASK,
                 Some(callback),
                 false,
-            ))));
+            ));
+            bucket.insert_order(&order);
+            order_vec.push(order);
         }
-    }
+    
 
     println!("Time for order placement: {}", now.elapsed().as_millis());
     now = Instant::now();
@@ -67,10 +68,10 @@ fn test_order_bucket() {
         bucket.size, bucket.total_volume
     );
 
-    for _x in 0..10 {
-        for _y in 0..5 {
+    for _x in 0..50 {
+        
             //bucket.remove_order(&(set_x[sort_x[x]] / 2 + set_y[sort_y[y]] / 2));
-            bucket.match_orders(&Volume::new(5));
+            assert_eq!(bucket.match_orders(&Volume::new(5)), Volume::new(5));
             /* bucket.insert_order(Order {
                     side: OrderSide::ASK,
                     limit: Price::new(500),
@@ -80,9 +81,10 @@ fn test_order_bucket() {
                     filled_volume: Cell::new(Volume::ZERO),
             filled_value: Cell::new(Value::ZERO),
                 }) */
-        }
+        
     }
 
+    assert_eq!(bucket.total_volume, 1750);
     println!(
         "Bucket size:{}, total_volume:{:?}",
         bucket.size, bucket.total_volume
@@ -106,49 +108,42 @@ fn callback(event: OrderEvent) {
     println!("OrderEvent: {:?}", event)
 }
 
-
 fn benchmark_order_book() {
     let mut rng = rand::thread_rng();
     let mut book = OrderBook::new();
 
-    const loops:usize = 10_000_000;
+    const LOOPS: usize = 10_000_000;
 
-    let mut r1 = Vec::<u64>::with_capacity(loops);
+    let mut r1 = Vec::<u64>::with_capacity(LOOPS);
 
-    let mut r2 = Vec::<bool>::with_capacity(loops);
+    let mut r2 = Vec::<bool>::with_capacity(LOOPS);
 
-    let mut r3 = Vec::<bool>::with_capacity(loops);
+    let mut r3 = Vec::<bool>::with_capacity(LOOPS);
 
-    let mut r4 = Vec::<bool>::with_capacity(loops);
+    let mut r4 = Vec::<bool>::with_capacity(LOOPS);
 
-    let mut r5 = Vec::<u64>::with_capacity(loops);
+    let mut r5 = Vec::<u64>::with_capacity(LOOPS);
 
-//let mut orders = <std::vec::Vec<order::Order>>::new();
+    //let mut orders = <std::vec::Vec<order::Order>>::new();
 
-
-
-
-    for x in 0..loops {
+    for x in 0..LOOPS {
         r1.insert(x, rng.gen_range(1, 750));
         r2.insert(x, rng.gen_range(0u64, 2u64) == 0);
-       //r2.insert(x, r1[x] >375);
+        //r2.insert(x, r1[x] >375);
 
         //cancel?
         r3.insert(x, rng.gen_range(0, 18) < 10);
 
         // GTC?
         r4.insert(x, rng.gen_range(0, 12) < 3);
-        
         //volume
         r5.insert(x, rng.gen_range(1, 10));
-
-        
     }
 
     let mut now = Instant::now();
 
     for x in 0..2000 {
-        book.insert_order( Order {
+        book.insert_order(Order {
             side: if rng.gen_range(0u64, 2u64) == 0 {
                 OrderSide::ASK
             } else {
@@ -165,16 +160,14 @@ fn benchmark_order_book() {
         });
     }
 
-   
-
     println!("Time for order placement: {}", now.elapsed().as_millis());
     now = Instant::now();
     let _y = 0;
-    for x in 0..(loops as u64) {
+    for x in 0..(LOOPS as u64) {
         //  println!("x={:?}", x);
         if r3[x as usize] {
             // println!("removing");
-            book.remove_order((loops as u64) + x-1);
+            book.remove_order((LOOPS as u64) + x - 1);
         //println!("removed");
         } else {
             //println!("inserting");
@@ -186,7 +179,7 @@ fn benchmark_order_book() {
                 },
                 limit: Price::new(r1[x as usize]),
                 volume: Volume::new(r5[x as usize]),
-                id:loops as u64 + x as u64,
+                id: LOOPS as u64 + x as u64,
                 //callback: Some(callback),
                 callback: None,
                 filled_volume: Cell::new(Volume::ZERO),
@@ -196,22 +189,26 @@ fn benchmark_order_book() {
             //println!("inserted");
         }
     }
-    println!("Time for orderbook change: {}, Mtps: {}", now.elapsed().as_millis(),  (loops as f32 / 1_000f32)/(now.elapsed().as_millis() as f32));
+    println!(
+        "Time for orderbook change: {}, Mtps: {}",
+        now.elapsed().as_millis(),
+        (LOOPS as f32 / 1_000f32) / (now.elapsed().as_millis() as f32)
+    );
 }
 
 fn benchmark_order_book2() {
     let mut book = OrderBook::new();
-/**
-    for x in 1..1000 {
-        book.insert_order(Order::new(
-            Price::new(x),
-            Volume::new(10_000),
-            OrderSide::ASK,
-            None,
-            false,
-        ));
-    }
-**/
+    /**
+        for x in 1..1000 {
+            book.insert_order(Order::new(
+                Price::new(x),
+                Volume::new(10_000),
+                OrderSide::ASK,
+                None,
+                false,
+            ));
+        }
+    **/
     let mut now = Instant::now();
 
     for x in 0..30 {
@@ -219,7 +216,7 @@ fn benchmark_order_book2() {
         now = Instant::now();
         for y in 0..1000000 {
             book.insert_order(Order::new(
-                Price::new(y%750+1),
+                Price::new(y % 750 + 1),
                 Volume::new(1),
                 OrderSide::BID,
                 None,
@@ -227,13 +224,16 @@ fn benchmark_order_book2() {
             ));
         }
 
-        println!("Matching at price={:?} took {:?}ms", x, now.elapsed().as_millis());
-        
+        println!(
+            "Matching at price={:?} took {:?}ms",
+            x,
+            now.elapsed().as_millis()
+        );
     }
 
     let ten_millis = time::Duration::from_millis(100000);
 
-thread::sleep(ten_millis);
+    thread::sleep(ten_millis);
 }
 
 fn test_order_book() {
