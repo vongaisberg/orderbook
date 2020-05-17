@@ -4,12 +4,11 @@ use std::ops::Neg;
 
 use crate::primitives::*;
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum OrderSide {
     ASK,
     BID,
 }
-
 
 impl Neg for OrderSide {
     type Output = Self;

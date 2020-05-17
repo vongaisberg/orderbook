@@ -3,7 +3,7 @@ use crate::primitives::*;
 
 use intmap::IntMap;
 use std::cmp::Ordering;
-use std::collections::{VecDeque, HashMap};
+use std::collections::{HashMap, VecDeque};
 //use std::hash::{Hash, Hasher};
 use std::rc::{Rc, Weak};
 
@@ -17,9 +17,10 @@ pub struct OrderBucket {
     pub size: usize,
 
     /// The inner ```Weak``` is for orders that get canceled from the orderbook (manual cancel)
-    /// The outer ```Weak``` is for order that get canceled from the order_bucket (canceled because they were filled)
-    order_queue: VecDeque<Weak<Weak<Order>>>,
-    order_map: HashMap<u64, Rc<Weak<Order>>>,
+    /// The outer ```Weak``` is for orders that get canceled from the order_bucket (canceled because they were filled)
+    //map order_queue: VecDeque<Weak<Weak<Order>>>,
+    order_queue: VecDeque<Weak<Order>>,
+    //map order_map: HashMap<u64, Rc<Weak<Order>>>,
 }
 
 impl PartialOrd for OrderBucket {
@@ -41,28 +42,28 @@ impl OrderBucket {
             total_volume: Volume::new(0),
             size: 0,
             order_queue: VecDeque::with_capacity(DEFAULT_CAPACITY),
-            order_map: HashMap::with_capacity(DEFAULT_CAPACITY),
+            //map   order_map: HashMap::with_capacity(DEFAULT_CAPACITY),
         }
     }
 
     pub fn insert_order(&mut self, order: Weak<Order>) {
         match order.upgrade() {
             Some(order_up) => {
-                //let now = Instant::now();
-                let order_rc = Rc::new(order);
+                //map let order_rc = Rc::new(order);
 
                 self.size += 1;
                 self.total_volume += order_up.volume;
 
-                self.order_queue.push_back(Rc::downgrade(&order_rc));
-                // let t1 = now.elapsed();
-                self.order_map.insert(order_up.id, order_rc);
-                // println!("Order insertion: Queue: {}, Map: {}", t1.as_nanos(), (now.elapsed()-t1).as_nanos());
+                //map   self.order_queue.push_back(Rc::downgrade(&order_rc));
+                self.order_queue.push_back(order);
+                //map  self.order_map.insert(order_up.id, order_rc);
+                //  println!("Order insertion: Queue: {}, Map: {}", t1.as_nanos(), (now.elapsed()-t1).as_nanos());
             }
             None => (),
         }
     }
 
+    /*map
     pub fn remove_order(&mut self, id: &u64) -> Option<Volume> {
         match self.order_map.remove(id) {
             Some(order_weak) => match order_weak.upgrade() {
@@ -77,6 +78,8 @@ impl OrderBucket {
             None => None,
         }
     }
+
+    */
     /// Match as many orders as possible with a given amount of volume
     ///
     /// #Returns how much volume was matched
@@ -85,27 +88,29 @@ impl OrderBucket {
         while unmatched_volume.get() > 0 && !self.order_queue.is_empty() {
             match self.order_queue.front().unwrap().upgrade() {
                 Some(order_weak) => {
-                    match order_weak.upgrade() {
-                        Some(order) => {
-                            //  println!("Trying to match with {:?}", order);
-                            let filled_volume = order.fill(unmatched_volume, self.price);
-                            unmatched_volume -= filled_volume;
-                            self.total_volume -= filled_volume;
-                            if order.is_filled() {
-                                self.order_queue.remove(0);
-                                self.size -= 1;
-                            }
-                        }
+                    //map match order_weak.upgrade() {
+                    //map    Some(order) => {
+                    //  println!("Trying to match with {:?}", order);
+                    let filled_volume = order_weak.fill(unmatched_volume, self.price);
+                    unmatched_volume -= filled_volume;
+                    self.total_volume -= filled_volume;
+                    if order_weak.is_filled() {
+                        self.order_queue.remove(0);
+                        self.size -= 1;
+                    }
+                    /*map   }
                         None => {
                             //Remove elements that were removed from the book
                             self.order_queue.remove(0);
                         }
                     }
+                    */
                 }
 
                 //Remove elements that were removed from the bucket using ```remove_order```
                 None => {
                     self.order_queue.remove(0);
+                    
                 }
             }
         }

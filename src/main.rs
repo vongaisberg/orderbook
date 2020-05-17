@@ -18,6 +18,8 @@ use std::rc::Rc;
 use std::time::SystemTime;
 use std::time::{Duration, Instant};
 
+use std::{thread, time};
+
 fn main() {
     /*     let mut vec = BitVec::from_elem(700, true);
     vec.set(0, false);
@@ -126,9 +128,7 @@ fn benchmark_order_book() {
     let mut rng = rand::thread_rng();
     let mut book = OrderBook::new();
 
-    
-
-    let loops = 10_000_000;
+    const loops:usize = 10_000_000;
 
     let mut r1 = Vec::<u64>::with_capacity(loops);
 
@@ -140,61 +140,117 @@ fn benchmark_order_book() {
 
     let mut r5 = Vec::<u64>::with_capacity(loops);
 
+//let mut orders = <std::vec::Vec<order::Order>>::new();
+
+
+
+
     for x in 0..loops {
-        
         r1.insert(x, rng.gen_range(1, 750));
-        r2.insert(x, rng.gen_range(0u64, 1u64) == 0);
-        r3.insert(x, rng.gen_range(0, 18) < 6);
+        r2.insert(x, rng.gen_range(0u64, 2u64) == 0);
+       //r2.insert(x, r1[x] >375);
+
+        //cancel?
+        r3.insert(x, rng.gen_range(0, 18) < 10);
+
+        // GTC?
         r4.insert(x, rng.gen_range(0, 12) < 3);
-        r5.insert(x, rng.gen_range(0, 100));
+        
+        //volume
+        r5.insert(x, rng.gen_range(1, 10));
+
+        
     }
 
     let mut now = Instant::now();
 
     for x in 0..2000 {
-        book.insert_order(Order {
-            side: if rng.gen_range(0u8, 1u8) == 0 {
+        book.insert_order( Order {
+            side: if rng.gen_range(0u64, 2u64) == 0 {
                 OrderSide::ASK
             } else {
                 OrderSide::BID
             },
             limit: Price::new(rng.gen_range(1, 750)),
-            volume: Volume::new(1000),
-            id: x,
+            volume: Volume::new(rng.gen_range(1, 10)),
+            id: x as u64,
             //callback: Some(callback),
             callback: None,
             filled_volume: Cell::new(Volume::ZERO),
             filled_value: Cell::new(Value::ZERO),
-            immediate_or_cancel: false,
+            immediate_or_cancel: rng.gen_range(0, 12) < 3,
         });
     }
 
+   
+
     println!("Time for order placement: {}", now.elapsed().as_millis());
     now = Instant::now();
-
+    let mut y = 0;
     for x in 0..(loops as u64) {
         //  println!("x={:?}", x);
         if r3[x as usize] {
             // println!("removing");
-            book.remove_order(x);
+            book.remove_order((loops as u64) + x-1);
         //println!("removed");
         } else {
             //println!("inserting");
-            book.insert_order(Order::new(
-                Price::new((r1[x as usize] % 750) + 1),
-                Volume::new(r5[x as usize]),
-                if r2[x as usize]  {
+            book.insert_order(Order {
+                side: if r2[x as usize] {
                     OrderSide::ASK
                 } else {
                     OrderSide::BID
                 },
-                None,
-                r4[x as usize],
-            ));
+                limit: Price::new(r1[x as usize]),
+                volume: Volume::new(r5[x as usize]),
+                id:loops as u64 + x as u64,
+                //callback: Some(callback),
+                callback: None,
+                filled_volume: Cell::new(Volume::ZERO),
+                filled_value: Cell::new(Value::ZERO),
+                immediate_or_cancel: r4[x as usize],
+            });
             //println!("inserted");
         }
     }
-    println!("Time for orderbook change: {}", now.elapsed().as_millis());
+    println!("Time for orderbook change: {}, Mtps: {}", now.elapsed().as_millis(),  (loops as f32 / 1_000f32)/(now.elapsed().as_millis() as f32));
+}
+
+fn benchmark_order_book2() {
+    let mut book = OrderBook::new();
+/**
+    for x in 1..1000 {
+        book.insert_order(Order::new(
+            Price::new(x),
+            Volume::new(10_000),
+            OrderSide::ASK,
+            None,
+            false,
+        ));
+    }
+**/
+    let mut now = Instant::now();
+
+    for x in 0..30 {
+        thread::sleep(Duration::from_millis(50));
+        now = Instant::now();
+        for y in 0..1000000 {
+            book.insert_order(Order::new(
+                Price::new(y%750+1),
+                Volume::new(1),
+                OrderSide::BID,
+                None,
+                false,
+            ));
+        }
+
+        println!("Matching at price={:?} took {:?}ms", x, now.elapsed().as_millis());
+        
+    }
+
+    let ten_millis = time::Duration::from_millis(100000);
+
+thread::sleep(ten_millis);
 }
 
 fn test_order_book() {
