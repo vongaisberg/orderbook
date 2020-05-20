@@ -1,21 +1,23 @@
 //extern crate rand;
+#![allow(dead_code)]
+#![allow(unused_variables)]
+#![allow(unused_assignments)]
+#![allow(unused_imports)]
 
 mod bit_set;
-mod order;
-mod order_book;
-mod order_bucket;
-mod primitives;
+pub mod exchange;
+pub mod order_handling;
 
-use crate::order::*;
-use crate::order_book::*;
-use crate::order_bucket::*;
+use crate::order_handling::order::*;
+use crate::order_handling::order_book::*;
+use crate::order_handling::order_bucket::OrderBucket;
+use std::rc::Rc;
+
+mod primitives;
 use crate::primitives::*;
 
 use rand::Rng;
 use std::cell::Cell;
-use std::collections::HashSet;
-
-use std::rc::Rc;
 
 use std::time::{Duration, Instant};
 
@@ -28,7 +30,7 @@ fn main() {
     println!("First element: {}", order_book::first_entry(vec).unwrap()); */
 
     //test_hot_set_index();
-    benchmark_order_book();
+    // benchmark_order_book();
     //test_order_book();
 }
 
@@ -47,20 +49,18 @@ fn test_order_bucket() {
     let mut now = Instant::now();
 
     let mut order_vec = Vec::new();
-    
-        for _y in 0..100 {
-            let order = Rc::new(Order::new(
-                Price::new(500),
-                Volume::new(20),
-                OrderSide::ASK,
-                Some(callback),
-                false,
-            ));
-            bucket.insert_order(&order);
-            order_vec.push(order);
-        }
-    
 
+    for _y in 0..100 {
+        let order = Rc::new(Order::new(
+            Price::new(500),
+            Volume::new(20),
+            OrderSide::ASK,
+            Some(callback),
+            false,
+        ));
+        bucket.insert_order(&order);
+        order_vec.push(order);
+    }
     println!("Time for order placement: {}", now.elapsed().as_millis());
     now = Instant::now();
     println!(
@@ -69,45 +69,37 @@ fn test_order_bucket() {
     );
 
     for _x in 0..50 {
-        
-            //bucket.remove_order(&(set_x[sort_x[x]] / 2 + set_y[sort_y[y]] / 2));
-            assert_eq!(bucket.match_orders(&Volume::new(5)), Volume::new(5));
-            /* bucket.insert_order(Order {
-                    side: OrderSide::ASK,
-                    limit: Price::new(500),
-                    volume: Volume::new(10),
-                    id: set_x[sort_x[x]] / 2 + set_y[sort_y[y + 500]] / 2,
-                    callback: Some(callback),
-                    filled_volume: Cell::new(Volume::ZERO),
-            filled_value: Cell::new(Value::ZERO),
-                }) */
-        
+        //bucket.remove_order(&(set_x[sort_x[x]] / 2 + set_y[sort_y[y]] / 2));
+        assert_eq!(bucket.match_orders(&Volume::new(5)), Volume::new(5));
+        /* bucket.insert_order(Order {
+                side: OrderSide::ASK,
+                limit: Price::new(500),
+                volume: Volume::new(10),
+                id: set_x[sort_x[x]] / 2 + set_y[sort_y[y + 500]] / 2,
+                callback: Some(callback),
+                filled_volume: Cell::new(Volume::ZERO),
+        filled_value: Cell::new(Value::ZERO),
+            }) */
     }
 
-    assert_eq!(bucket.total_volume, 1750);
+    assert_eq!(bucket.total_volume, Volume::new(1750));
     println!(
         "Bucket size:{}, total_volume:{:?}",
         bucket.size, bucket.total_volume
     );
 
     println!("Time for orderbook change: {}", now.elapsed().as_millis());
-    /*
-       for i in 0..100 {
-           bucket.match_orders(Volume::new(100));
-       }
-    */
     println!(
         "Bucket size:{}, total_volume:{:?}",
         bucket.size, bucket.total_volume
     );
-
     println!("Time: {}", now.elapsed().as_millis());
 }
 
 fn callback(event: OrderEvent) {
     println!("OrderEvent: {:?}", event)
 }
-
+#[test]
 fn benchmark_order_book() {
     let mut rng = rand::thread_rng();
     let mut book = OrderBook::new();
@@ -198,7 +190,7 @@ fn benchmark_order_book() {
 
 fn benchmark_order_book2() {
     let mut book = OrderBook::new();
-    /**
+    /*
         for x in 1..1000 {
             book.insert_order(Order::new(
                 Price::new(x),
@@ -208,7 +200,7 @@ fn benchmark_order_book2() {
                 false,
             ));
         }
-    **/
+    */
     let mut now = Instant::now();
 
     for x in 0..30 {

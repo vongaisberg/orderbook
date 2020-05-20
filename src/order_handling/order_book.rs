@@ -1,8 +1,8 @@
 //mod order_bucket;
 extern crate bit_vec;
 
-use crate::order::*;
-use crate::order_bucket::*;
+use crate::order_handling::order::*;
+use crate::order_handling::order_bucket::*;
 use crate::primitives::*;
 
 use bit_vec::BitVec;
@@ -36,7 +36,7 @@ impl Default for OrderBook {
             cold_ask_map: BTreeMap::new(),
             cold_bid_map: BTreeMap::new(),
 
-            order_map: HashMap::with_capacity(20_000_000),
+            order_map: HashMap::with_capacity(10_100_000),
         }
     }
 }
@@ -127,12 +127,14 @@ impl OrderBook {
             }
         }
     }
-    pub fn remove_order(&mut self, id: u64) {
+    pub fn remove_order(&mut self, id: u64) -> Result<(), String>{
+        self.order_map.get(&id).ok_or("This order does not exist")?.cancel();
         self.order_map.remove(&id);
+        Ok(())
     }
 }
 
-pub fn first_entry(vec: BitVec<u32>) -> Option<u32> {
+fn first_entry(vec: BitVec<u32>) -> Option<u32> {
     vec.blocks()
         .enumerate()
         .filter(|(_n, b)| *b != 0u32)

@@ -1,4 +1,4 @@
-use crate::order::*;
+use crate::order_handling::order::*;
 use crate::primitives::*;
 
 use std::cmp::Ordering;
@@ -78,12 +78,10 @@ impl OrderBucket {
     pub fn match_orders(&mut self, volume: &Volume) -> Volume {
         let mut unmatched_volume = volume.clone();
         while unmatched_volume.get() > 0 && !self.order_queue.is_empty() {
-            println!("Found something to match with");
             match self.order_queue.front().unwrap().upgrade() {
                 Some(order) => {
                     //map match order.upgrade() {
                     //map    Some(order) => {
-                    println!("Trying to match with {:?}", order);
                     let filled_volume = order.fill(unmatched_volume, self.price);
                     unmatched_volume -= filled_volume;
                     self.total_volume -= filled_volume;

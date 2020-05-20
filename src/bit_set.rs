@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 pub struct BitSet {
     content: Vec<u32>,
     size: usize,
