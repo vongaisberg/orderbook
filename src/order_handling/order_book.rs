@@ -11,7 +11,7 @@ use std::collections::HashMap;
 
 use std::cell::Cell;
 use std::collections::btree_map::BTreeMap;
-
+use tokio::sync::mpsc::error::SendError;
 
 //use std::collections::btree_map::RangeMut;
 //use std::ops::Range;
@@ -19,24 +19,45 @@ use std::collections::btree_map::BTreeMap;
 use std::rc::Rc;
 use std::result::Result::*;
 
-pub struct OrderBook {
-    /// Store ask orders sorted by price
-    cold_ask_map: BTreeMap<Price, OrderBucket>,
+use arr_macro::arr;
 
-    /// Store bid orders sorted by price
-    cold_bid_map: BTreeMap<Price, OrderBucket>,
+const max_price: usize = 1_000_000;
+pub struct OrderBook {
+    /// Maximum price allowed on this orderbook
+    max_price: Price,
+
+    /// Lowest current ask price
+    min_ask_price: Price,
+
+    /// Highest current bid price
+    max_bid_price: Price,
+
     // ask_depth_fenwick_tree: Vec<u64>,
     // bid_depth_fenwick_tree: Vec<u64>
     order_map: HashMap<u64, Rc<Order>>,
+
+    /// Next Order ID
+    highest_id: usize,
+
+    /// Store orders sorted by price
+    orders_array: [OrderBucket; max_price],
 }
 
 impl Default for OrderBook {
     fn default() -> OrderBook {
-        OrderBook {
-            cold_ask_map: BTreeMap::new(),
-            cold_bid_map: BTreeMap::new(),
+        let array =  arr![OrderBucket::new(Price::ZERO); 1_000_000];
+        assert!(array.len() == max_price);
+        for i in 0..max_price {
+            array[i] = OrderBucket::new(Price::new(i as u64));
+        }
 
-            order_map: HashMap::with_capacity(10_100_000),
+        OrderBook {
+            max_price: Price::new(max_price as u64),
+            min_ask_price: Price::new(max_price as u64),
+            max_bid_price: Price::ZERO,
+            order_map: HashMap::with_capacity(max_price),
+            highest_id: 0,
+            orders_array: array,
         }
     }
 }
@@ -52,66 +73,58 @@ impl OrderBook {
     /// The incoming order will possibly take liquidity from the orderbook.
     ///
     ///
-    fn match_order(&mut self, order: &mut Order) {
-        // Match as much as possible from vol with bucket if price is right
-        // Return the volume that is left over and the value that was payed for all matched volume
-        let lambda = |(vol, val): (Volume, Value), (price, bucket): (&Price, &mut OrderBucket)| {
-            if order.matches_with(&price) {
-                let vol_matched = bucket.match_orders(&vol);
-                if vol_matched == vol.clone() {
-                    //Everything was matched, shortcut the try_fold
-                    Err((Volume::ZERO, (val + (vol_matched * *price))))
-                } else {
-                    //Not everything was matched, return how much is left
-                    Ok((vol - vol_matched, (val + (vol_matched * *price))))
+    async fn match_order(&mut self, order: Order) -> Result<(), SendError<OrderEvent>> {
+        // Volume that remains in the incoming order
+        let mut vol = order.volume;
+        // Value of the already matched volume
+        let mut val = Value::ZERO;
+
+        while vol > Volume::new(0) {
+            let best_price = match order.side {
+                OrderSide::ASK => {
+                    if self.max_bid_price < order.limit {
+                        break;
+                    } else {
+                        self.max_bid_price
+                    }
                 }
-            } else {
-                Err((vol, val))
+                OrderSide::BID => {
+                    if self.min_ask_price > order.limit {
+                        break;
+                    } else {
+                        self.min_ask_price
+                    }
+                }
+            };
+
+            let matched_volume = self.orders_array[best_price.val as usize]
+                .match_orders(&vol)
+                .await;
+            vol -= matched_volume;
+            val += matched_volume * best_price;
+
+            if self.orders_array[best_price.val as usize].total_volume == Volume::ZERO {
+                match order.side {
+                    OrderSide::ASK => self.max_bid_price.val -= 1,
+                    OrderSide::BID => self.min_ask_price.val += 1,
+                }
             }
-        };
-
-        //How much volume is left in the order and how much was payed for the already matched volume
-        let (vol, val) = (order.volume, Value::ZERO);
-
-        let cold_map = match order.side {
-            //incoming ASK orders match with old BID orders
-            OrderSide::ASK => &mut self.cold_bid_map,
-            OrderSide::BID => &mut self.cold_ask_map,
-        };
-
-        let (new_filled_vol, new_filled_val) = match 
-                    // Using try_fold for the short_circuiting feature, when the order is already filled
-                    // Err(x) and Ok(x) both mean that the order has been filled as much as possible and x volume remains in it
-                    cold_map
-                        .range_mut(..)
-                        .try_rfold((vol, val), lambda)
-                   {
-                    Ok((vol, val)) => (order.volume - vol, val),
-                    Err((vol, val)) => (order.volume - vol, val),
-                };
-
-        order.filled_volume = Cell::new(new_filled_vol);
-        order.filled_value = Cell::new(new_filled_val);
-        if new_filled_vol.get() > 0 {
-            order.notify()
         }
-    }
 
-    fn get_or_create_cold_orderbucket(&mut self, order: &Order) -> &mut OrderBucket {
-        // Handling only for cold orders, hot orders are missing
-        let order_map = match order.side {
-            OrderSide::ASK => &mut (self.cold_ask_map),
-            OrderSide::BID => &mut (self.cold_bid_map),
-        };
+        let new_filled_vol = order.volume - vol;
 
-        order_map
-            .entry(order.limit)
-            .or_insert_with(|| OrderBucket::new(order.limit))
+        order.filled_volume.set(new_filled_vol);
+        order.filled_value.set(val);
+        if new_filled_vol.get() > 0 {
+            order.notify().await;
+        }
+
+        Ok(())
     }
 
     pub fn insert_order(&mut self, mut order: Order) {
         // println!("matching");
-        self.match_order(&mut order);
+        self.match_order(order);
         // println!("matched");
 
         if !order.is_filled() {
@@ -120,17 +133,24 @@ impl OrderBook {
             } else {
                 let order_rc = Rc::new(order);
 
-                self.get_or_create_cold_orderbucket(&order_rc)
-                    .insert_order(&order_rc);
+                self.orders_array[order.limit.val as usize].insert_order(order);
 
                 self.order_map.insert(order_rc.id, order_rc);
             }
         }
     }
-    pub fn remove_order(&mut self, id: u64) -> Result<(), String>{
-        self.order_map.get(&id).ok_or("This order does not exist")?.cancel();
+    pub fn remove_order(&mut self, id: u64) -> Result<(), String> {
+        self.order_map
+            .get(&id)
+            .ok_or("This order does not exist")?
+            .cancel();
         self.order_map.remove(&id);
         Ok(())
+    }
+
+    pub fn inecrement_id(&mut self) -> usize {
+        self.highest_id += 1;
+        self.highest_id
     }
 }
 

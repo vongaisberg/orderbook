@@ -1,10 +1,15 @@
+//use crate::order_handling::deletable_list::*;
 use crate::order_handling::order::*;
 use crate::primitives::*;
 
 use std::cmp::Ordering;
 use std::collections::VecDeque;
 //use std::hash::{Hash, Hasher};
+use std::collections::LinkedList;
 use std::rc::{Rc, Weak};
+
+
+use arr_macro::arr;
 
 const DEFAULT_CAPACITY: usize = 2 ^ 8 - 1;
 
@@ -18,7 +23,7 @@ pub struct OrderBucket {
     /// The inner ```Weak``` is for orders that get canceled from the orderbook (manual cancel)
     /// The outer ```Weak``` is for orders that get canceled from the order_bucket (canceled because they were filled)
     //map order_queue: VecDeque<Weak<Weak<Order>>>,
-    order_queue: VecDeque<Weak<Order>>,
+    order_queue: LinkedList<Order>,
     //map order_map: HashMap<u64, Rc<Weak<Order>>>,
 }
 
@@ -40,17 +45,17 @@ impl OrderBucket {
             price: price,
             total_volume: Volume::new(0),
             size: 0,
-            order_queue: VecDeque::with_capacity(DEFAULT_CAPACITY),
+            order_queue: LinkedList::new(),
             //map   order_map: HashMap::with_capacity(DEFAULT_CAPACITY),
         }
     }
 
-    pub fn insert_order(&mut self, order: &Rc<Order>) {
+    pub fn insert_order(&mut self, order: Order) {
         self.size += 1;
         self.total_volume += order.volume;
 
         //map   self.order_queue.push_back(Rc::downgrade(&order_rc));
-        self.order_queue.push_back(Rc::downgrade(order));
+        self.order_queue.push_back(order);
         //map  self.order_map.insert(order_up.id, order_rc);
         //  println!("Order insertion: Queue: {}, Map: {}", t1.as_nanos(), (now.elapsed()-t1).as_nanos());
     }
@@ -75,36 +80,28 @@ impl OrderBucket {
     /// Match as many orders as possible with a given amount of volume
     ///
     /// #Returns how much volume was matched
-    pub fn match_orders(&mut self, volume: &Volume) -> Volume {
+    pub async fn match_orders(&mut self, volume: &Volume) -> Volume {
         let mut unmatched_volume = volume.clone();
         while unmatched_volume.get() > 0 && !self.order_queue.is_empty() {
-            match self.order_queue.front().unwrap().upgrade() {
-                Some(order) => {
-                    //map match order.upgrade() {
-                    //map    Some(order) => {
-                    let filled_volume = order.fill(unmatched_volume, self.price);
-                    unmatched_volume -= filled_volume;
-                    self.total_volume -= filled_volume;
-                    if order.is_filled() {
-                        self.order_queue.remove(0);
-                        self.size -= 1;
-                    }
-                    /*map   }
-                        None => {
-                            //Remove elements that were removed from the book
-                            self.order_queue.remove(0);
-                        }
-                    }
-                    */
-                }
+            let order = self.order_queue.front().unwrap();
 
-                //Remove elements that were removed from the bucket using ```remove_order```
+            //map match order.upgrade() {
+            //map    Some(order) => {
+            let filled_volume = order.fill(unmatched_volume, self.price).await;
+            unmatched_volume -= filled_volume;
+            self.total_volume -= filled_volume;
+            if order.is_filled() {
+                self.order_queue.pop_front();
+                self.size -= 1;
+            }
+            /*map   }
                 None => {
+                    //Remove elements that were removed from the book
                     self.order_queue.remove(0);
                 }
             }
+            */
         }
-
         *volume - unmatched_volume
     }
 }

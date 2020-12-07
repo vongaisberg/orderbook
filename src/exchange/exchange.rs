@@ -29,7 +29,12 @@ impl<'a> Exchange<'a> {
 
     pub fn add_orderbook(&self, asset: &str, book: OrderBook) -> Result<(), &str> {
         match self.assets.read().unwrap().get(asset) {
-            Some(ass) => match self.orderbooks.write().unwrap().insert(ass.ticker, RwLock::new(book)) {
+            Some(ass) => match self
+                .orderbooks
+                .write()
+                .unwrap()
+                .insert(ass.ticker, RwLock::new(book))
+            {
                 None => Ok(()),
                 Some(_) => Err("There is already an orderbook for this asset."),
             },
@@ -42,14 +47,28 @@ impl<'a> Exchange<'a> {
             OrderCommand::Trade(trade) => {
                 self.check_asset_existance(trade.ticker)?;
                 let orderbooks = self.orderbooks.read().unwrap();
-                let book = orderbooks.get(trade.ticker).ok_or("This orderbook does not exist.")?;
-                let order = Order::new(trade.limit, trade.volume, trade.side, None, trade.immediate_or_cancel);
-                book.write().unwrap().insert_order(order);
+                let mut book = orderbooks
+                    .get(trade.ticker)
+                    .ok_or("This orderbook does not exist.")?
+                    .write()
+                    .unwrap();
+                let id = book.inecrement_id();
+                let order = Order::new(
+                    id as u64,
+                    trade.limit,
+                    trade.volume,
+                    trade.side,
+                    None,
+                    trade.immediate_or_cancel,
+                );
+                book.insert_order(order);
                 Ok(())
             }
             OrderCommand::Cancel(cancel) => {
                 let orderbooks = self.orderbooks.read().unwrap();
-                let book = orderbooks.get(cancel.ticker).ok_or("This orderbook does not exist.")?;
+                let book = orderbooks
+                    .get(cancel.ticker)
+                    .ok_or("This orderbook does not exist.")?;
                 let mut book = book.write().unwrap();
                 book.remove_order(cancel.order_id)
             }

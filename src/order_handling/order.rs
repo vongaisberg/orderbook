@@ -1,6 +1,8 @@
 use rand::Rng;
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::ops::Neg;
+use tokio::sync::mpsc::error::SendError;
+use tokio::sync::mpsc::*;
 
 use crate::primitives::*;
 
@@ -12,7 +14,7 @@ pub enum OrderSide {
 
 impl Neg for OrderSide {
     type Output = Self;
-     fn neg(self) -> Self {
+    fn neg(self) -> Self {
         match self {
             Self::ASK => Self::BID,
             Self::BID => Self::ASK,
@@ -27,7 +29,6 @@ pub enum OrderEvent {
     Canceled(u64),
 }
 
-#[derive(Debug)]
 pub struct Order {
     pub limit: Price,
     pub volume: Volume,
@@ -35,7 +36,7 @@ pub struct Order {
     pub id: u64,
     pub immediate_or_cancel: bool,
 
-    pub callback: Option<fn(OrderEvent)>,
+    pub event_sender: Option<RefCell<Sender<OrderEvent>>>,
 
     pub filled_volume: Cell<Volume>,
     pub filled_value: Cell<Value>,
@@ -49,10 +50,11 @@ impl PartialEq for Order {
 
 impl Order {
     pub fn new(
+        id: u64,
         limit: Price,
         volume: Volume,
         side: OrderSide,
-        callback: Option<fn(OrderEvent)>,
+        event_sender: Option<RefCell<Sender<OrderEvent>>>,
         immediate_or_cancel: bool,
     ) -> Order {
         let mut rng = rand::thread_rng();
@@ -60,8 +62,8 @@ impl Order {
             limit: limit,
             volume: volume,
             side: side,
-            id: rng.gen(),
-            callback: callback,
+            id: id,
+            event_sender: event_sender,
             filled_volume: Cell::new(Volume::ZERO),
             filled_value: Cell::new(Value::ZERO),
             immediate_or_cancel: immediate_or_cancel,
@@ -74,14 +76,14 @@ impl Order {
 
     //Will fill the order as much as possible and return how much fit in
     //Price ist just to set the filled_value correctly
-    pub fn fill(&self, volume: Volume, price: Price) -> Volume {
+    pub async fn fill(&self, volume: Volume, price: Price) -> Volume {
         if self.remaining_volume() <= volume {
             let old_volume = self.remaining_volume();
 
             //Fill order completely
             self.filled_volume.set(self.volume);
             self.filled_value.set(self.volume * price);
-            self.notify();
+            self.notify().await;
 
             //Return what did fit in
             old_volume
@@ -91,7 +93,7 @@ impl Order {
             self.filled_value
                 .set(self.filled_value.get() + (volume * price));
 
-            self.notify();
+            self.notify().await;
             //Return volume, because everything fit in
             volume
         }
@@ -114,24 +116,34 @@ impl Order {
 
     /// Call the callback function
     /// Execute this whenever the order state changes
-    pub fn notify(&self) {
-        match self.callback {
-            Some(callback) => callback(OrderEvent::Filled(
-                self.id,
-                self.filled_volume.get(),
-                self.filled_value.get(),
-            )),
-            None => (),
-        };
+    pub async fn notify(&self) -> Result<(), SendError<OrderEvent>> {
+        match &self.event_sender {
+            Some(event_sender) => {
+                event_sender
+                    .borrow_mut()
+                    .send(OrderEvent::Filled(
+                        self.id,
+                        self.filled_volume.get(),
+                        self.filled_value.get(),
+                    ))
+                    .await
+            }
+            None => Ok(()),
+        }
     }
 
     /// Call the callback function
     /// Execute this when the order gets removed from the orderbook without being completely filled
-    pub fn cancel(&self) {
+    pub async fn cancel(&self) -> Result<(), SendError<OrderEvent>> {
         assert!(!self.is_filled());
-        match self.callback {
-            Some(callback) => callback(OrderEvent::Canceled(self.id)),
-            None => (),
-        };
+        match &self.event_sender {
+            Some(event_sender) => {
+                event_sender
+                    .borrow_mut()
+                    .send(OrderEvent::Canceled(self.id))
+                    .await
+            }
+            None => Ok(()),
+        }
     }
 }
