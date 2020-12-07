@@ -8,7 +8,6 @@ use std::collections::VecDeque;
 use std::collections::LinkedList;
 use std::rc::{Rc, Weak};
 
-
 use arr_macro::arr;
 
 const DEFAULT_CAPACITY: usize = 2 ^ 8 - 1;
@@ -80,14 +79,14 @@ impl OrderBucket {
     /// Match as many orders as possible with a given amount of volume
     ///
     /// #Returns how much volume was matched
-    pub async fn match_orders(&mut self, volume: &Volume) -> Volume {
+    pub fn match_orders(&mut self, volume: &Volume) -> Volume {
         let mut unmatched_volume = volume.clone();
         while unmatched_volume.get() > 0 && !self.order_queue.is_empty() {
             let order = self.order_queue.front().unwrap();
 
             //map match order.upgrade() {
             //map    Some(order) => {
-            let filled_volume = order.fill(unmatched_volume, self.price).await;
+            let filled_volume = order.fill(unmatched_volume, self.price);
             unmatched_volume -= filled_volume;
             self.total_volume -= filled_volume;
             if order.is_filled() {

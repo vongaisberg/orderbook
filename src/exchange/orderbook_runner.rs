@@ -26,7 +26,7 @@ impl OrderBookRunner {
         }
     }
 
-    pub async fn insert_order(&mut self, mut order: Order) {
+    pub async fn insert_order(&mut self, order: Order) {
         //order.event_sender = Some(RefCell::new(self.event_sender.clone()));
         self.orderbook.insert_order(order);
     }

@@ -8,7 +8,6 @@ pub trait Command<'a> {
 pub enum OrderCommand<'a> {
     Trade(TradeCommand<'a>),
     Cancel(CancelCommand<'a>),
-    
 }
 
 pub struct TradeCommand<'a> {

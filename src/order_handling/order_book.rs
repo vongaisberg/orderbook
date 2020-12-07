@@ -103,9 +103,7 @@ impl OrderBook {
                 }
             };
 
-            let matched_volume = self.orders_array[best_price.val as usize]
-                .match_orders(&vol)
-                .await;
+            let matched_volume = self.orders_array[best_price.val as usize].match_orders(&vol);
             vol -= matched_volume;
             val += matched_volume * best_price;
 

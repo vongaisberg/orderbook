@@ -71,7 +71,7 @@ impl Order {
 
     //Will fill the order as much as possible and return how much fit in
     //Price ist just to set the filled_value correctly
-    pub async fn fill(&self, volume: Volume, price: Price) -> Volume {
+    pub fn fill(&self, volume: Volume, price: Price) -> Volume {
         if self.remaining_volume() <= volume {
             let old_volume = self.remaining_volume();
 
@@ -111,7 +111,7 @@ impl Order {
 
     /// Call the callback function
     /// Execute this whenever the order state changes
-    pub async fn notify(&self) {
+    pub fn notify(&self) {
         /*
         match &self.event_sender {
             Some(event_sender) => {
@@ -131,7 +131,7 @@ impl Order {
 
     /// Call the callback function
     /// Execute this when the order gets removed from the orderbook without being completely filled
-    pub async fn cancel(&self) {
+    pub fn cancel(&self) {
         /*
         assert!(!self.is_filled());
         match &self.event_sender {
