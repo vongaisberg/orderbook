@@ -1,17 +1,17 @@
 //mod order_bucket;
-extern crate bit_vec;
+//extern crate bit_vec;
 
 use crate::order_handling::order::*;
 use crate::order_handling::order_bucket::*;
 use crate::primitives::*;
 
-use bit_vec::BitVec;
+//use bit_vec::BitVec;
 
 use std::collections::HashMap;
 
 use std::cell::Cell;
-use std::collections::btree_map::BTreeMap;
-use tokio::sync::mpsc::error::SendError;
+//use std::collections::btree_map::BTreeMap;
+//use tokio::sync::mpsc::error::SendError;
 
 //use std::collections::btree_map::RangeMut;
 //use std::ops::Range;
@@ -19,9 +19,7 @@ use tokio::sync::mpsc::error::SendError;
 use std::rc::Rc;
 use std::result::Result::*;
 
-use arr_macro::arr;
-
-const max_price: usize = 1_000_000;
+const MAX_PRICE: usize = 1_000;
 pub struct OrderBook {
     /// Maximum price allowed on this orderbook
     max_price: Price,
@@ -34,28 +32,36 @@ pub struct OrderBook {
 
     // ask_depth_fenwick_tree: Vec<u64>,
     // bid_depth_fenwick_tree: Vec<u64>
-    order_map: HashMap<u64, Rc<Order>>,
+    order_map: HashMap<u64, *mut Order>,
 
     /// Next Order ID
     highest_id: usize,
 
     /// Store orders sorted by price
-    orders_array: [OrderBucket; max_price],
+    orders_array: [OrderBucket; MAX_PRICE],
 }
 
 impl Default for OrderBook {
     fn default() -> OrderBook {
-        let array =  arr![OrderBucket::new(Price::ZERO); 1_000_000];
-        assert!(array.len() == max_price);
-        for i in 0..max_price {
+        let mut array = unsafe {
+            let mut arr: [OrderBucket; MAX_PRICE] = std::mem::uninitialized();
+            let mut i = 0;
+            for item in &mut arr[..] {
+                std::ptr::write(item, OrderBucket::new(Price::new(i as u64)));
+                i += 1;
+            }
+            arr
+        };
+        assert!(array.len() == MAX_PRICE);
+        for i in 0..MAX_PRICE {
             array[i] = OrderBucket::new(Price::new(i as u64));
         }
 
         OrderBook {
-            max_price: Price::new(max_price as u64),
-            min_ask_price: Price::new(max_price as u64),
+            max_price: Price::new(MAX_PRICE as u64),
+            min_ask_price: Price::new(MAX_PRICE as u64),
             max_bid_price: Price::ZERO,
-            order_map: HashMap::with_capacity(max_price),
+            order_map: HashMap::with_capacity(MAX_PRICE),
             highest_id: 0,
             orders_array: array,
         }
@@ -73,7 +79,7 @@ impl OrderBook {
     /// The incoming order will possibly take liquidity from the orderbook.
     ///
     ///
-    async fn match_order(&mut self, order: Order) -> Result<(), SendError<OrderEvent>> {
+    async fn match_order(&mut self, order: &mut Order) {
         // Volume that remains in the incoming order
         let mut vol = order.volume;
         // Value of the already matched volume
@@ -116,34 +122,33 @@ impl OrderBook {
         order.filled_volume.set(new_filled_vol);
         order.filled_value.set(val);
         if new_filled_vol.get() > 0 {
-            order.notify().await;
+            order.notify();
         }
-
-        Ok(())
     }
 
     pub fn insert_order(&mut self, mut order: Order) {
         // println!("matching");
-        self.match_order(order);
+        self.match_order(&mut order);
         // println!("matched");
 
         if !order.is_filled() {
             if order.immediate_or_cancel {
                 order.cancel();
             } else {
-                let order_rc = Rc::new(order);
-
+                self.order_map.insert(order.id, &mut order);
                 self.orders_array[order.limit.val as usize].insert_order(order);
-
-                self.order_map.insert(order_rc.id, order_rc);
             }
         }
     }
     pub fn remove_order(&mut self, id: u64) -> Result<(), String> {
-        self.order_map
-            .get(&id)
-            .ok_or("This order does not exist")?
-            .cancel();
+        unsafe {
+            self.order_map
+                .get(&id)
+                .ok_or("This order does not exist")?
+                .as_ref()
+                .unwrap()
+                .cancel();
+        }
         self.order_map.remove(&id);
         Ok(())
     }
@@ -154,6 +159,7 @@ impl OrderBook {
     }
 }
 
+/*
 fn first_entry(vec: BitVec<u32>) -> Option<u32> {
     vec.blocks()
         .enumerate()
@@ -161,3 +167,4 @@ fn first_entry(vec: BitVec<u32>) -> Option<u32> {
         .map(|(n, b)| (n as u32) * 32 + b.trailing_zeros())
         .next()
 }
+*/

@@ -1,8 +1,5 @@
-use rand::Rng;
 use std::cell::{Cell, RefCell};
 use std::ops::Neg;
-use tokio::sync::mpsc::error::SendError;
-use tokio::sync::mpsc::*;
 
 use crate::primitives::*;
 
@@ -36,8 +33,7 @@ pub struct Order {
     pub id: u64,
     pub immediate_or_cancel: bool,
 
-    pub event_sender: Option<RefCell<Sender<OrderEvent>>>,
-
+    //pub event_sender: Option<RefCell<Sender<OrderEvent>>>,
     pub filled_volume: Cell<Volume>,
     pub filled_value: Cell<Value>,
 }
@@ -54,16 +50,15 @@ impl Order {
         limit: Price,
         volume: Volume,
         side: OrderSide,
-        event_sender: Option<RefCell<Sender<OrderEvent>>>,
+        //event_sender: Option<RefCell<Sender<OrderEvent>>>,
         immediate_or_cancel: bool,
     ) -> Order {
-        let mut rng = rand::thread_rng();
         Order {
             limit: limit,
             volume: volume,
             side: side,
             id: id,
-            event_sender: event_sender,
+            //event_sender: event_sender,
             filled_volume: Cell::new(Volume::ZERO),
             filled_value: Cell::new(Value::ZERO),
             immediate_or_cancel: immediate_or_cancel,
@@ -83,7 +78,7 @@ impl Order {
             //Fill order completely
             self.filled_volume.set(self.volume);
             self.filled_value.set(self.volume * price);
-            self.notify().await;
+            self.notify();
 
             //Return what did fit in
             old_volume
@@ -93,7 +88,7 @@ impl Order {
             self.filled_value
                 .set(self.filled_value.get() + (volume * price));
 
-            self.notify().await;
+            self.notify();
             //Return volume, because everything fit in
             volume
         }
@@ -116,7 +111,8 @@ impl Order {
 
     /// Call the callback function
     /// Execute this whenever the order state changes
-    pub async fn notify(&self) -> Result<(), SendError<OrderEvent>> {
+    pub async fn notify(&self) {
+        /*
         match &self.event_sender {
             Some(event_sender) => {
                 event_sender
@@ -126,15 +122,17 @@ impl Order {
                         self.filled_volume.get(),
                         self.filled_value.get(),
                     ))
-                    .await
+
             }
             None => Ok(()),
         }
+        */
     }
 
     /// Call the callback function
     /// Execute this when the order gets removed from the orderbook without being completely filled
-    pub async fn cancel(&self) -> Result<(), SendError<OrderEvent>> {
+    pub async fn cancel(&self) {
+        /*
         assert!(!self.is_filled());
         match &self.event_sender {
             Some(event_sender) => {
@@ -145,5 +143,6 @@ impl Order {
             }
             None => Ok(()),
         }
+        */
     }
 }

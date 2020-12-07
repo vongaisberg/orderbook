@@ -58,7 +58,7 @@ impl<'a> Exchange<'a> {
                     trade.limit,
                     trade.volume,
                     trade.side,
-                    None,
+                    //None,
                     trade.immediate_or_cancel,
                 );
                 book.insert_order(order);

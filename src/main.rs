@@ -4,15 +4,13 @@
 #![allow(unused_assignments)]
 #![allow(unused_imports)]
 #![feature(async_closure)]
-#![feature(box_syntax)]
-#![feature(dropck_eyepatch)]
+//#![feature(box_syntax)]
+//#![feature(dropck_eyepatch)]
 //#![feature(specialization)]
 //#![feature(extend_one)]
 //#![feature(exact_size_is_empty)]
 
-
-
-mod bit_set;
+//mod bit_set;
 pub mod exchange;
 pub mod order_handling;
 
@@ -32,6 +30,7 @@ use std::time::{Duration, Instant};
 use std::{thread, time};
 
 fn main() {
+    println!("test")
     /*     let mut vec = BitVec::from_elem(700, true);
     vec.set(0, false);
     vec.set(1, false);
@@ -157,7 +156,7 @@ fn benchmark_order_book() {
             volume: Volume::new(rng.gen_range(1, 10)),
             id: x as u64,
             //callback: Some(callback),
-            event_sender: None,
+            //event_sender: None,
             filled_volume: Cell::new(Volume::ZERO),
             filled_value: Cell::new(Value::ZERO),
             immediate_or_cancel: rng.gen_range(0, 12) < 3,
@@ -185,7 +184,7 @@ fn benchmark_order_book() {
                 volume: Volume::new(r5[x as usize]),
                 id: LOOPS as u64 + x as u64,
                 //callback: Some(callback),
-                event_sender: None,
+                //event_sender: None,
                 filled_volume: Cell::new(Volume::ZERO),
                 filled_value: Cell::new(Value::ZERO),
                 immediate_or_cancel: r4[x as usize],
