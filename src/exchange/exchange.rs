@@ -7,52 +7,48 @@ use crate::order_handling::order_book::OrderBook;
 use std::collections::HashMap;
 use std::sync::RwLock;
 
+const ORDER_BOOK_COUNT: usize = 1;
 #[derive(Default)]
-pub struct Exchange<'a> {
-    pub accounts: RwLock<HashMap<u64, Account>>,
-    pub assets: RwLock<HashMap<&'a str, Asset>>,
-    pub orderbooks: RwLock<HashMap<&'a str, RwLock<OrderBook>>>,
+pub struct Exchange {
+    //pub accounts: RwLock<HashMap<u64, Account>>,
+    //pub assets: RwLock<HashMap<&'a str, Asset>>,
+    pub orderbooks: [OrderBook; ORDER_BOOK_COUNT],
 }
 
-impl<'a> Exchange<'a> {
+impl<'a> Exchange {
     pub fn new() -> Self {
         Self::default()
     }
+    /*
+            pub fn add_account(&self, acc: Account) {
+                self.accounts.write().unwrap().insert(acc.id, acc);
+            }
 
-    pub fn add_account(&self, acc: Account) {
-        self.accounts.write().unwrap().insert(acc.id, acc);
-    }
+            pub fn add_asset(&self, asset: Asset) {
+                self.assets.write().unwrap().insert(asset.ticker, asset);
+            }
 
-    pub fn add_asset(&self, asset: Asset) {
-        self.assets.write().unwrap().insert(asset.ticker, asset);
-    }
-
-    pub fn add_orderbook(&self, asset: &str, book: OrderBook) -> Result<(), &str> {
-        match self.assets.read().unwrap().get(asset) {
-            Some(ass) => match self
-                .orderbooks
-                .write()
-                .unwrap()
-                .insert(ass.ticker, RwLock::new(book))
-            {
-                None => Ok(()),
-                Some(_) => Err("There is already an orderbook for this asset."),
-            },
-            None => Err("This asset does not exist."),
+        pub fn add_orderbook(&self, asset: &str, book: OrderBook) -> Result<(), &str> {
+            match self.assets.read().unwrap().get(asset) {
+                Some(ass) => match self
+                    .orderbooks
+                    .write()
+                    .unwrap()
+                    .insert(ass.ticker, RwLock::new(book))
+                {
+                    None => Ok(()),
+                    Some(_) => Err("There is already an orderbook for this asset."),
+                },
+                None => Err("This asset does not exist."),
+            }
         }
-    }
-
-    pub fn trade(&self, order_command: OrderCommand) -> Result<(), String> {
+    */
+    pub fn trade(&mut self, order_command: &OrderCommand) -> Result<(), String> {
         match order_command {
             OrderCommand::Trade(trade) => {
-                self.check_asset_existance(trade.ticker)?;
-                let orderbooks = self.orderbooks.read().unwrap();
-                let mut book = orderbooks
-                    .get(trade.ticker)
-                    .ok_or("This orderbook does not exist.")?
-                    .write()
-                    .unwrap();
-                let id = book.inecrement_id();
+                //self.check_asset_existance(trade.ticker)?;
+                let book = &mut (self.orderbooks)[trade.ticker];
+                let id = book.increment_id();
                 let order = Order::new(
                     id as u64,
                     trade.limit,
@@ -65,15 +61,13 @@ impl<'a> Exchange<'a> {
                 Ok(())
             }
             OrderCommand::Cancel(cancel) => {
-                let orderbooks = self.orderbooks.read().unwrap();
-                let book = orderbooks
-                    .get(cancel.ticker)
-                    .ok_or("This orderbook does not exist.")?;
-                let mut book = book.write().unwrap();
-                book.remove_order(cancel.order_id)
+                let book = &mut self.orderbooks[cancel.ticker];
+                book.remove_order(cancel.order_id);
+                Ok(())
             }
         }
     }
+    /*
     /// Check if an assets with that ticker exists on this exchange
     fn check_asset_existance<'b>(&'b self, asset: &str) -> Result<(), &str> {
         if self.assets.read().unwrap().contains_key(asset) {
@@ -82,4 +76,5 @@ impl<'a> Exchange<'a> {
             Err("This asset does not exist.")
         }
     }
+    */
 }

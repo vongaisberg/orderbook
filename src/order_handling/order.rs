@@ -72,6 +72,7 @@ impl Order {
     //Will fill the order as much as possible and return how much fit in
     //Price ist just to set the filled_value correctly
     pub fn fill(&self, volume: Volume, price: Price) -> Volume {
+        //println!("Own volume: {}, Incoming volume: {}", *self.remaining_volume(), *volume);
         if self.remaining_volume() <= volume {
             let old_volume = self.remaining_volume();
 

@@ -1,6 +1,6 @@
 //! A doubly-linked list with owned nodes.
 //!
-//! The `DeletableLinkedList` allows pushing and popping elements at either end
+//! The `LinkedList` allows pushing and popping elements at either end
 //! in constant time.
 //!
 //! NOTE: It is almost always better to use [`Vec`] or [`VecDeque`] because
@@ -23,7 +23,7 @@ use std::boxed::Box;
 
 /// A doubly-linked list with owned nodes.
 ///
-/// The `DeletableLinkedList` allows pushing and popping elements at either end
+/// The `LinkedList` allows pushing and popping elements at either end
 /// in constant time.
 ///
 /// NOTE: It is almost always better to use `Vec` or `VecDeque` because
@@ -34,28 +34,28 @@ trait SpecExtend<I: IntoIterator> {
     /// Extends `self` with the contents of the given iterator.
     fn spec_extend(&mut self, iter: I);
 }
-pub struct DeletableLinkedList<T> {
-    head: Option<NonNull<DeletableNode<T>>>,
-    tail: Option<NonNull<DeletableNode<T>>>,
+pub struct LinkedList<T> {
+    head: Option<NonNull<Node<T>>>,
+    tail: Option<NonNull<Node<T>>>,
     len: usize,
-    marker: PhantomData<Box<DeletableNode<T>>>,
+    marker: PhantomData<Box<Node<T>>>,
 }
 
-pub struct DeletableNode<T> {
-    next: Option<NonNull<DeletableNode<T>>>,
-    prev: Option<NonNull<DeletableNode<T>>>,
+pub struct Node<T> {
+    next: Option<NonNull<Node<T>>>,
+    prev: Option<NonNull<Node<T>>>,
     element: T,
 }
 
-/// An iterator over the elements of a `DeletableLinkedList`.
+/// An iterator over the elements of a `LinkedList`.
 ///
-/// This `struct` is created by [`DeletableLinkedList::iter()`]. See its
+/// This `struct` is created by [`LinkedList::iter()`]. See its
 /// documentation for more.
 pub struct Iter<'a, T: 'a> {
-    head: Option<NonNull<DeletableNode<T>>>,
-    tail: Option<NonNull<DeletableNode<T>>>,
+    head: Option<NonNull<Node<T>>>,
+    tail: Option<NonNull<Node<T>>>,
     len: usize,
-    marker: PhantomData<&'a DeletableNode<T>>,
+    marker: PhantomData<&'a Node<T>>,
 }
 
 impl<T: fmt::Debug> fmt::Debug for Iter<'_, T> {
@@ -72,18 +72,18 @@ impl<T> Clone for Iter<'_, T> {
     }
 }
 
-/// A mutable iterator over the elements of a `DeletableLinkedList`.
+/// A mutable iterator over the elements of a `LinkedList`.
 ///
-/// This `struct` is created by [`DeletableLinkedList::iter_mut()`]. See its
+/// This `struct` is created by [`LinkedList::iter_mut()`]. See its
 /// documentation for more.
 
 pub struct IterMut<'a, T: 'a> {
     // We do *not* exclusively own the entire list here, references to node's `element`
     // have been handed out by the iterator! So be careful when using this; the methods
     // called must be aware that there can be aliasing pointers to `element`.
-    list: &'a mut DeletableLinkedList<T>,
-    head: Option<NonNull<DeletableNode<T>>>,
-    tail: Option<NonNull<DeletableNode<T>>>,
+    list: &'a mut LinkedList<T>,
+    head: Option<NonNull<Node<T>>>,
+    tail: Option<NonNull<Node<T>>>,
     len: usize,
 }
 
@@ -96,15 +96,15 @@ impl<T: fmt::Debug> fmt::Debug for IterMut<'_, T> {
     }
 }
 
-/// An owning iterator over the elements of a `DeletableLinkedList`.
+/// An owning iterator over the elements of a `LinkedList`.
 ///
-/// This `struct` is created by the [`into_iter`] method on [`DeletableLinkedList`]
+/// This `struct` is created by the [`into_iter`] method on [`LinkedList`]
 /// (provided by the `IntoIterator` trait). See its documentation for more.
 ///
-/// [`into_iter`]: DeletableLinkedList::into_iter
+/// [`into_iter`]: LinkedList::into_iter
 #[derive(Clone)]
 pub struct IntoIter<T> {
-    list: DeletableLinkedList<T>,
+    list: LinkedList<T>,
 }
 
 impl<T: fmt::Debug> fmt::Debug for IntoIter<T> {
@@ -113,9 +113,9 @@ impl<T: fmt::Debug> fmt::Debug for IntoIter<T> {
     }
 }
 
-impl<T> DeletableNode<T> {
+impl<T> Node<T> {
     fn new(element: T) -> Self {
-        DeletableNode {
+        Node {
             next: None,
             prev: None,
             element,
@@ -126,11 +126,11 @@ impl<T> DeletableNode<T> {
         self.element
     }
 
-    fn remove(self) {
+    fn remove(mut self) {
         unsafe {
             match self.next {
                 Some(next) => {
-                    let n = *(next.as_ptr());
+                    let mut n = &mut *(next.as_ptr());
                     n.prev = self.prev;
                 }
                 None => {}
@@ -138,7 +138,7 @@ impl<T> DeletableNode<T> {
 
             match self.prev {
                 Some(prev) => {
-                    let p = *(prev.as_ptr());
+                    let mut p = &mut *(prev.as_ptr());
                     p.next = self.next;
                 }
                 None => {}
@@ -150,10 +150,10 @@ impl<T> DeletableNode<T> {
 }
 
 // private methods
-impl<T> DeletableLinkedList<T> {
+impl<T> LinkedList<T> {
     /// Adds the given node to the front of the list.
     #[inline]
-    fn push_front_node(&mut self, mut node: Box<DeletableNode<T>>) {
+    fn push_front_node(&mut self, mut node: Box<Node<T>>) {
         // This method takes care not to create mutable references to whole nodes,
         // to maintain validity of aliasing pointers into `element`.
         unsafe {
@@ -174,7 +174,7 @@ impl<T> DeletableLinkedList<T> {
 
     /// Removes and returns the node at the front of the list.
     #[inline]
-    fn pop_front_node(&mut self) -> Option<Box<DeletableNode<T>>> {
+    fn pop_front_node(&mut self) -> Option<Box<Node<T>>> {
         // This method takes care not to create mutable references to whole nodes,
         // to maintain validity of aliasing pointers into `element`.
         self.head.map(|node| unsafe {
@@ -194,7 +194,7 @@ impl<T> DeletableLinkedList<T> {
 
     /// Adds the given node to the back of the list.
     #[inline]
-    fn push_back_node(&mut self, mut node: Box<DeletableNode<T>>) {
+    fn push_back_node(&mut self, mut node: Box<Node<T>>) {
         // This method takes care not to create mutable references to whole nodes,
         // to maintain validity of aliasing pointers into `element`.
         unsafe {
@@ -215,7 +215,7 @@ impl<T> DeletableLinkedList<T> {
 
     /// Removes and returns the node at the back of the list.
     #[inline]
-    fn pop_back_node(&mut self) -> Option<Box<DeletableNode<T>>> {
+    fn pop_back_node(&mut self) -> Option<Box<Node<T>>> {
         // This method takes care not to create mutable references to whole nodes,
         // to maintain validity of aliasing pointers into `element`.
         self.tail.map(|node| unsafe {
@@ -240,7 +240,7 @@ impl<T> DeletableLinkedList<T> {
     /// This method takes care not to create mutable references to `element`, to
     /// maintain validity of aliasing pointers.
     #[inline]
-    unsafe fn unlink_node(&mut self, mut node: NonNull<DeletableNode<T>>) {
+    unsafe fn unlink_node(&mut self, mut node: NonNull<Node<T>>) {
         let node = unsafe { node.as_mut() }; // this one is ours now, we can create an &mut.
 
         // Not creating new mutable (unique!) references overlapping `element`.
@@ -265,10 +265,10 @@ impl<T> DeletableLinkedList<T> {
     #[inline]
     unsafe fn splice_nodes(
         &mut self,
-        existing_prev: Option<NonNull<DeletableNode<T>>>,
-        existing_next: Option<NonNull<DeletableNode<T>>>,
-        mut splice_start: NonNull<DeletableNode<T>>,
-        mut splice_end: NonNull<DeletableNode<T>>,
+        existing_prev: Option<NonNull<Node<T>>>,
+        existing_next: Option<NonNull<Node<T>>>,
+        mut splice_start: NonNull<Node<T>>,
+        mut splice_end: NonNull<Node<T>>,
         splice_length: usize,
     ) {
         // This method takes care not to create multiple mutable references to whole nodes at the same time,
@@ -297,7 +297,7 @@ impl<T> DeletableLinkedList<T> {
 
     /// Detaches all nodes from a linked list as a series of nodes.
     #[inline]
-    fn detach_all_nodes(mut self) -> Option<(NonNull<DeletableNode<T>>, NonNull<DeletableNode<T>>, usize)> {
+    fn detach_all_nodes(mut self) -> Option<(NonNull<Node<T>>, NonNull<Node<T>>, usize)> {
         let head = self.head.take();
         let tail = self.tail.take();
         let len = mem::replace(&mut self.len, 0);
@@ -312,7 +312,7 @@ impl<T> DeletableLinkedList<T> {
     #[inline]
     unsafe fn split_off_before_node(
         &mut self,
-        split_node: Option<NonNull<DeletableNode<T>>>,
+        split_node: Option<NonNull<Node<T>>>,
         at: usize,
     ) -> Self {
         // The split node is the new head node of the second part
@@ -331,7 +331,7 @@ impl<T> DeletableLinkedList<T> {
                 first_part_head = None;
             }
 
-            let first_part = DeletableLinkedList {
+            let first_part = LinkedList {
                 head: first_part_head,
                 tail: first_part_tail,
                 len: at,
@@ -344,14 +344,14 @@ impl<T> DeletableLinkedList<T> {
 
             first_part
         } else {
-            mem::replace(self, DeletableLinkedList::new())
+            mem::replace(self, LinkedList::new())
         }
     }
 
     #[inline]
     unsafe fn split_off_after_node(
         &mut self,
-        split_node: Option<NonNull<DeletableNode<T>>>,
+        split_node: Option<NonNull<Node<T>>>,
         at: usize,
     ) -> Self {
         // The split node is the new tail node of the first part and owns
@@ -371,7 +371,7 @@ impl<T> DeletableLinkedList<T> {
                 second_part_tail = None;
             }
 
-            let second_part = DeletableLinkedList {
+            let second_part = LinkedList {
                 head: second_part_head,
                 tail: second_part_tail,
                 len: self.len - at,
@@ -384,33 +384,33 @@ impl<T> DeletableLinkedList<T> {
 
             second_part
         } else {
-            mem::replace(self, DeletableLinkedList::new())
+            mem::replace(self, LinkedList::new())
         }
     }
 }
 
-impl<T> Default for DeletableLinkedList<T> {
-    /// Creates an empty `DeletableLinkedList<T>`.
+impl<T> Default for LinkedList<T> {
+    /// Creates an empty `LinkedList<T>`.
     #[inline]
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<T> DeletableLinkedList<T> {
-    /// Creates an empty `DeletableLinkedList`.
+impl<T> LinkedList<T> {
+    /// Creates an empty `LinkedList`.
     ///
     /// # Examples
     ///
     /// ```
-    /// use std::collections::DeletableLinkedList;
+    /// use std::collections::LinkedList;
     ///
-    /// let list: DeletableLinkedList<u32> = DeletableLinkedList::new();
+    /// let list: LinkedList<u32> = LinkedList::new();
     /// ```
     #[inline]
 
     pub const fn new() -> Self {
-        DeletableLinkedList {
+        LinkedList {
             head: None,
             tail: None,
             len: 0,
@@ -428,12 +428,12 @@ impl<T> DeletableLinkedList<T> {
     /// # Examples
     ///
     /// ```
-    /// use std::collections::DeletableLinkedList;
+    /// use std::collections::LinkedList;
     ///
-    /// let mut list1 = DeletableLinkedList::new();
+    /// let mut list1 = LinkedList::new();
     /// list1.push_back('a');
     ///
-    /// let mut list2 = DeletableLinkedList::new();
+    /// let mut list2 = LinkedList::new();
     /// list2.push_back('b');
     /// list2.push_back('c');
     ///
@@ -491,9 +491,9 @@ impl<T> DeletableLinkedList<T> {
     /// # Examples
     ///
     /// ```
-    /// use std::collections::DeletableLinkedList;
+    /// use std::collections::LinkedList;
     ///
-    /// let mut list: DeletableLinkedList<u32> = DeletableLinkedList::new();
+    /// let mut list: LinkedList<u32> = LinkedList::new();
     ///
     /// list.push_back(0);
     /// list.push_back(1);
@@ -520,9 +520,9 @@ impl<T> DeletableLinkedList<T> {
     /// # Examples
     ///
     /// ```
-    /// use std::collections::DeletableLinkedList;
+    /// use std::collections::LinkedList;
     ///
-    /// let mut list: DeletableLinkedList<u32> = DeletableLinkedList::new();
+    /// let mut list: LinkedList<u32> = LinkedList::new();
     ///
     /// list.push_back(0);
     /// list.push_back(1);
@@ -596,16 +596,16 @@ impl<T> DeletableLinkedList<T> {
         }
     }
 
-    /// Returns `true` if the `DeletableLinkedList` is empty.
+    /// Returns `true` if the `LinkedList` is empty.
     ///
     /// This operation should compute in *O*(1) time.
     ///
     /// # Examples
     ///
     /// ```
-    /// use std::collections::DeletableLinkedList;
+    /// use std::collections::LinkedList;
     ///
-    /// let mut dl = DeletableLinkedList::new();
+    /// let mut dl = LinkedList::new();
     /// assert!(dl.is_empty());
     ///
     /// dl.push_front("foo");
@@ -616,16 +616,16 @@ impl<T> DeletableLinkedList<T> {
         self.head.is_none()
     }
 
-    /// Returns the length of the `DeletableLinkedList`.
+    /// Returns the length of the `LinkedList`.
     ///
     /// This operation should compute in *O*(1) time.
     ///
     /// # Examples
     ///
     /// ```
-    /// use std::collections::DeletableLinkedList;
+    /// use std::collections::LinkedList;
     ///
-    /// let mut dl = DeletableLinkedList::new();
+    /// let mut dl = LinkedList::new();
     ///
     /// dl.push_front(2);
     /// assert_eq!(dl.len(), 1);
@@ -641,16 +641,16 @@ impl<T> DeletableLinkedList<T> {
         self.len
     }
 
-    /// Removes all elements from the `DeletableLinkedList`.
+    /// Removes all elements from the `LinkedList`.
     ///
     /// This operation should compute in *O*(*n*) time.
     ///
     /// # Examples
     ///
     /// ```
-    /// use std::collections::DeletableLinkedList;
+    /// use std::collections::LinkedList;
     ///
-    /// let mut dl = DeletableLinkedList::new();
+    /// let mut dl = LinkedList::new();
     ///
     /// dl.push_front(2);
     /// dl.push_front(1);
@@ -666,15 +666,15 @@ impl<T> DeletableLinkedList<T> {
         *self = Self::new();
     }
 
-    /// Returns `true` if the `DeletableLinkedList` contains an element equal to the
+    /// Returns `true` if the `LinkedList` contains an element equal to the
     /// given value.
     ///
     /// # Examples
     ///
     /// ```
-    /// use std::collections::DeletableLinkedList;
+    /// use std::collections::LinkedList;
     ///
-    /// let mut list: DeletableLinkedList<u32> = DeletableLinkedList::new();
+    /// let mut list: LinkedList<u32> = LinkedList::new();
     ///
     /// list.push_back(0);
     /// list.push_back(1);
@@ -696,9 +696,9 @@ impl<T> DeletableLinkedList<T> {
     /// # Examples
     ///
     /// ```
-    /// use std::collections::DeletableLinkedList;
+    /// use std::collections::LinkedList;
     ///
-    /// let mut dl = DeletableLinkedList::new();
+    /// let mut dl = LinkedList::new();
     /// assert_eq!(dl.front(), None);
     ///
     /// dl.push_front(1);
@@ -715,9 +715,9 @@ impl<T> DeletableLinkedList<T> {
     /// # Examples
     ///
     /// ```
-    /// use std::collections::DeletableLinkedList;
+    /// use std::collections::LinkedList;
     ///
-    /// let mut dl = DeletableLinkedList::new();
+    /// let mut dl = LinkedList::new();
     /// assert_eq!(dl.front(), None);
     ///
     /// dl.push_front(1);
@@ -740,9 +740,9 @@ impl<T> DeletableLinkedList<T> {
     /// # Examples
     ///
     /// ```
-    /// use std::collections::DeletableLinkedList;
+    /// use std::collections::LinkedList;
     ///
-    /// let mut dl = DeletableLinkedList::new();
+    /// let mut dl = LinkedList::new();
     /// assert_eq!(dl.back(), None);
     ///
     /// dl.push_back(1);
@@ -759,9 +759,9 @@ impl<T> DeletableLinkedList<T> {
     /// # Examples
     ///
     /// ```
-    /// use std::collections::DeletableLinkedList;
+    /// use std::collections::LinkedList;
     ///
-    /// let mut dl = DeletableLinkedList::new();
+    /// let mut dl = LinkedList::new();
     /// assert_eq!(dl.back(), None);
     ///
     /// dl.push_back(1);
@@ -785,9 +785,9 @@ impl<T> DeletableLinkedList<T> {
     /// # Examples
     ///
     /// ```
-    /// use std::collections::DeletableLinkedList;
+    /// use std::collections::LinkedList;
     ///
-    /// let mut dl = DeletableLinkedList::new();
+    /// let mut dl = LinkedList::new();
     ///
     /// dl.push_front(2);
     /// assert_eq!(dl.front().unwrap(), &2);
@@ -796,7 +796,7 @@ impl<T> DeletableLinkedList<T> {
     /// assert_eq!(dl.front().unwrap(), &1);
     /// ```
     pub fn push_front(&mut self, elt: T) {
-        self.push_front_node(box DeletableNode::new(elt));
+        self.push_front_node(box Node::new(elt));
     }
 
     /// Removes the first element and returns it, or `None` if the list is
@@ -807,9 +807,9 @@ impl<T> DeletableLinkedList<T> {
     /// # Examples
     ///
     /// ```
-    /// use std::collections::DeletableLinkedList;
+    /// use std::collections::LinkedList;
     ///
-    /// let mut d = DeletableLinkedList::new();
+    /// let mut d = LinkedList::new();
     /// assert_eq!(d.pop_front(), None);
     ///
     /// d.push_front(1);
@@ -819,7 +819,7 @@ impl<T> DeletableLinkedList<T> {
     /// assert_eq!(d.pop_front(), None);
     /// ```
     pub fn pop_front(&mut self) -> Option<T> {
-        self.pop_front_node().map(DeletableNode::into_element)
+        self.pop_front_node().map(Node::into_element)
     }
 
     /// Appends an element to the back of a list.
@@ -829,15 +829,15 @@ impl<T> DeletableLinkedList<T> {
     /// # Examples
     ///
     /// ```
-    /// use std::collections::DeletableLinkedList;
+    /// use std::collections::LinkedList;
     ///
-    /// let mut d = DeletableLinkedList::new();
+    /// let mut d = LinkedList::new();
     /// d.push_back(1);
     /// d.push_back(3);
     /// assert_eq!(3, *d.back().unwrap());
     /// ```
     pub fn push_back(&mut self, elt: T) {
-        self.push_back_node(box DeletableNode::new(elt));
+        self.push_back_node(box Node::new(elt));
     }
 
     /// Removes the last element from a list and returns it, or `None` if
@@ -848,16 +848,16 @@ impl<T> DeletableLinkedList<T> {
     /// # Examples
     ///
     /// ```
-    /// use std::collections::DeletableLinkedList;
+    /// use std::collections::LinkedList;
     ///
-    /// let mut d = DeletableLinkedList::new();
+    /// let mut d = LinkedList::new();
     /// assert_eq!(d.pop_back(), None);
     /// d.push_back(1);
     /// d.push_back(3);
     /// assert_eq!(d.pop_back(), Some(3));
     /// ```
     pub fn pop_back(&mut self) -> Option<T> {
-        self.pop_back_node().map(DeletableNode::into_element)
+        self.pop_back_node().map(Node::into_element)
     }
 
     /// Splits the list into two at the given index. Returns everything after the given index,
@@ -872,9 +872,9 @@ impl<T> DeletableLinkedList<T> {
     /// # Examples
     ///
     /// ```
-    /// use std::collections::DeletableLinkedList;
+    /// use std::collections::LinkedList;
     ///
-    /// let mut d = DeletableLinkedList::new();
+    /// let mut d = LinkedList::new();
     ///
     /// d.push_front(1);
     /// d.push_front(2);
@@ -885,7 +885,7 @@ impl<T> DeletableLinkedList<T> {
     /// assert_eq!(split.pop_front(), Some(1));
     /// assert_eq!(split.pop_front(), None);
     /// ```
-    pub fn split_off(&mut self, at: usize) -> DeletableLinkedList<T> {
+    pub fn split_off(&mut self, at: usize) -> LinkedList<T> {
         let len = self.len();
         assert!(at <= len, "Cannot split off at a nonexistent index");
         if at == 0 {
@@ -927,9 +927,9 @@ impl<T> DeletableLinkedList<T> {
     ///
     /// ```
     /// #![feature(linked_list_remove)]
-    /// use std::collections::DeletableLinkedList;
+    /// use std::collections::LinkedList;
     ///
-    /// let mut d = DeletableLinkedList::new();
+    /// let mut d = LinkedList::new();
     ///
     /// d.push_front(1);
     /// d.push_front(2);
@@ -979,12 +979,12 @@ impl<T> DeletableLinkedList<T> {
     ///
     /// ```
     /// #![feature(drain_filter)]
-    /// use std::collections::DeletableLinkedList;
+    /// use std::collections::LinkedList;
     ///
-    /// let mut numbers: DeletableLinkedList<u32> = DeletableLinkedList::new();
+    /// let mut numbers: LinkedList<u32> = LinkedList::new();
     /// numbers.extend(&[1, 2, 3, 4, 5, 6, 8, 9, 11, 13, 14, 15]);
     ///
-    /// let evens = numbers.drain_filter(|x| *x % 2 == 0).collect::<DeletableLinkedList<_>>();
+    /// let evens = numbers.drain_filter(|x| *x % 2 == 0).collect::<LinkedList<_>>();
     /// let odds = numbers;
     ///
     /// assert_eq!(evens.into_iter().collect::<Vec<_>>(), vec![2, 4, 6, 8, 14]);
@@ -1008,9 +1008,9 @@ impl<T> DeletableLinkedList<T> {
     }
 }
 
-unsafe impl<#[may_dangle] T> Drop for DeletableLinkedList<T> {
+unsafe impl<#[may_dangle] T> Drop for LinkedList<T> {
     fn drop(&mut self) {
-        struct DropGuard<'a, T>(&'a mut DeletableLinkedList<T>);
+        struct DropGuard<'a, T>(&'a mut LinkedList<T>);
 
         impl<'a, T> Drop for DropGuard<'a, T> {
             fn drop(&mut self) {
@@ -1146,7 +1146,7 @@ impl<T> IterMut<'_, T> {
                 };
 
                 let node = Some(
-                    Box::leak(box DeletableNode {
+                    Box::leak(box Node {
                         next: Some(head),
                         prev: Some(prev),
                         element,
@@ -1177,7 +1177,7 @@ impl<T> IterMut<'_, T> {
     }
 }
 
-/// A cursor over a `DeletableLinkedList`.
+/// A cursor over a `LinkedList`.
 ///
 /// A `Cursor` is like an iterator, except that it can freely seek back-and-forth.
 ///
@@ -1188,8 +1188,8 @@ impl<T> IterMut<'_, T> {
 /// When created, cursors start at the front of the list, or the "ghost" non-element if the list is empty.
 pub struct Cursor<'a, T: 'a> {
     index: usize,
-    current: Option<NonNull<DeletableNode<T>>>,
-    list: &'a DeletableLinkedList<T>,
+    current: Option<NonNull<Node<T>>>,
+    list: &'a LinkedList<T>,
 }
 
 impl<T> Clone for Cursor<'_, T> {
@@ -1216,7 +1216,7 @@ impl<T: fmt::Debug> fmt::Debug for Cursor<'_, T> {
     }
 }
 
-/// A cursor over a `DeletableLinkedList` with editing operations.
+/// A cursor over a `LinkedList` with editing operations.
 ///
 /// A `Cursor` is like an iterator, except that it can freely seek back-and-forth, and can
 /// safely mutate the list during iteration. This is because the lifetime of its yielded
@@ -1228,8 +1228,8 @@ impl<T: fmt::Debug> fmt::Debug for Cursor<'_, T> {
 /// tail of the list.
 pub struct CursorMut<'a, T: 'a> {
     index: usize,
-    current: Option<NonNull<DeletableNode<T>>>,
-    list: &'a mut DeletableLinkedList<T>,
+    current: Option<NonNull<Node<T>>>,
+    list: &'a mut LinkedList<T>,
 }
 
 impl<T: fmt::Debug> fmt::Debug for CursorMut<'_, T> {
@@ -1242,7 +1242,7 @@ impl<T: fmt::Debug> fmt::Debug for CursorMut<'_, T> {
 }
 
 impl<'a, T> Cursor<'a, T> {
-    /// Returns the cursor position index within the `DeletableLinkedList`.
+    /// Returns the cursor position index within the `LinkedList`.
     ///
     /// This returns `None` if the cursor is currently pointing to the
     /// "ghost" non-element.
@@ -1251,11 +1251,11 @@ impl<'a, T> Cursor<'a, T> {
         Some(self.index)
     }
 
-    /// Moves the cursor to the next element of the `DeletableLinkedList`.
+    /// Moves the cursor to the next element of the `LinkedList`.
     ///
     /// If the cursor is pointing to the "ghost" non-element then this will move it to
-    /// the first element of the `DeletableLinkedList`. If it is pointing to the last
-    /// element of the `DeletableLinkedList` then this will move it to the "ghost" non-element.
+    /// the first element of the `LinkedList`. If it is pointing to the last
+    /// element of the `LinkedList` then this will move it to the "ghost" non-element.
     pub fn move_next(&mut self) {
         match self.current.take() {
             // We had no current element; the cursor was sitting at the start position
@@ -1272,11 +1272,11 @@ impl<'a, T> Cursor<'a, T> {
         }
     }
 
-    /// Moves the cursor to the previous element of the `DeletableLinkedList`.
+    /// Moves the cursor to the previous element of the `LinkedList`.
     ///
     /// If the cursor is pointing to the "ghost" non-element then this will move it to
-    /// the last element of the `DeletableLinkedList`. If it is pointing to the first
-    /// element of the `DeletableLinkedList` then this will move it to the "ghost" non-element.
+    /// the last element of the `LinkedList`. If it is pointing to the first
+    /// element of the `LinkedList` then this will move it to the "ghost" non-element.
     pub fn move_prev(&mut self) {
         match self.current.take() {
             // No current. We're at the start of the list. Yield None and jump to the end.
@@ -1304,8 +1304,8 @@ impl<'a, T> Cursor<'a, T> {
     /// Returns a reference to the next element.
     ///
     /// If the cursor is pointing to the "ghost" non-element then this returns
-    /// the first element of the `DeletableLinkedList`. If it is pointing to the last
-    /// element of the `DeletableLinkedList` then this returns `None`.
+    /// the first element of the `LinkedList`. If it is pointing to the last
+    /// element of the `LinkedList` then this returns `None`.
     pub fn peek_next(&self) -> Option<&'a T> {
         unsafe {
             let next = match self.current {
@@ -1319,8 +1319,8 @@ impl<'a, T> Cursor<'a, T> {
     /// Returns a reference to the previous element.
     ///
     /// If the cursor is pointing to the "ghost" non-element then this returns
-    /// the last element of the `DeletableLinkedList`. If it is pointing to the first
-    /// element of the `DeletableLinkedList` then this returns `None`.
+    /// the last element of the `LinkedList`. If it is pointing to the first
+    /// element of the `LinkedList` then this returns `None`.
     pub fn peek_prev(&self) -> Option<&'a T> {
         unsafe {
             let prev = match self.current {
@@ -1333,7 +1333,7 @@ impl<'a, T> Cursor<'a, T> {
 }
 
 impl<'a, T> CursorMut<'a, T> {
-    /// Returns the cursor position index within the `DeletableLinkedList`.
+    /// Returns the cursor position index within the `LinkedList`.
     ///
     /// This returns `None` if the cursor is currently pointing to the
     /// "ghost" non-element.
@@ -1342,11 +1342,11 @@ impl<'a, T> CursorMut<'a, T> {
         Some(self.index)
     }
 
-    /// Moves the cursor to the next element of the `DeletableLinkedList`.
+    /// Moves the cursor to the next element of the `LinkedList`.
     ///
     /// If the cursor is pointing to the "ghost" non-element then this will move it to
-    /// the first element of the `DeletableLinkedList`. If it is pointing to the last
-    /// element of the `DeletableLinkedList` then this will move it to the "ghost" non-element.
+    /// the first element of the `LinkedList`. If it is pointing to the last
+    /// element of the `LinkedList` then this will move it to the "ghost" non-element.
     pub fn move_next(&mut self) {
         match self.current.take() {
             // We had no current element; the cursor was sitting at the start position
@@ -1363,11 +1363,11 @@ impl<'a, T> CursorMut<'a, T> {
         }
     }
 
-    /// Moves the cursor to the previous element of the `DeletableLinkedList`.
+    /// Moves the cursor to the previous element of the `LinkedList`.
     ///
     /// If the cursor is pointing to the "ghost" non-element then this will move it to
-    /// the last element of the `DeletableLinkedList`. If it is pointing to the first
-    /// element of the `DeletableLinkedList` then this will move it to the "ghost" non-element.
+    /// the last element of the `LinkedList`. If it is pointing to the first
+    /// element of the `LinkedList` then this will move it to the "ghost" non-element.
     pub fn move_prev(&mut self) {
         match self.current.take() {
             // No current. We're at the start of the list. Yield None and jump to the end.
@@ -1395,8 +1395,8 @@ impl<'a, T> CursorMut<'a, T> {
     /// Returns a reference to the next element.
     ///
     /// If the cursor is pointing to the "ghost" non-element then this returns
-    /// the first element of the `DeletableLinkedList`. If it is pointing to the last
-    /// element of the `DeletableLinkedList` then this returns `None`.
+    /// the first element of the `LinkedList`. If it is pointing to the last
+    /// element of the `LinkedList` then this returns `None`.
     pub fn peek_next(&mut self) -> Option<&mut T> {
         unsafe {
             let next = match self.current {
@@ -1410,8 +1410,8 @@ impl<'a, T> CursorMut<'a, T> {
     /// Returns a reference to the previous element.
     ///
     /// If the cursor is pointing to the "ghost" non-element then this returns
-    /// the last element of the `DeletableLinkedList`. If it is pointing to the first
-    /// element of the `DeletableLinkedList` then this returns `None`.
+    /// the last element of the `LinkedList`. If it is pointing to the first
+    /// element of the `LinkedList` then this returns `None`.
     pub fn peek_prev(&mut self) -> Option<&mut T> {
         unsafe {
             let prev = match self.current {
@@ -1439,13 +1439,13 @@ impl<'a, T> CursorMut<'a, T> {
 // Now the list editing operations
 
 impl<'a, T> CursorMut<'a, T> {
-    /// Inserts a new element into the `DeletableLinkedList` after the current one.
+    /// Inserts a new element into the `LinkedList` after the current one.
     ///
     /// If the cursor is pointing at the "ghost" non-element then the new element is
-    /// inserted at the front of the `DeletableLinkedList`.
+    /// inserted at the front of the `LinkedList`.
     pub fn insert_after(&mut self, item: T) {
         unsafe {
-            let spliced_node = Box::leak(Box::new(DeletableNode::new(item))).into();
+            let spliced_node = Box::leak(Box::new(Node::new(item))).into();
             let node_next = match self.current {
                 None => self.list.head,
                 Some(node) => node.as_ref().next,
@@ -1459,13 +1459,13 @@ impl<'a, T> CursorMut<'a, T> {
         }
     }
 
-    /// Inserts a new element into the `DeletableLinkedList` before the current one.
+    /// Inserts a new element into the `LinkedList` before the current one.
     ///
     /// If the cursor is pointing at the "ghost" non-element then the new element is
-    /// inserted at the end of the `DeletableLinkedList`.
+    /// inserted at the end of the `LinkedList`.
     pub fn insert_before(&mut self, item: T) {
         unsafe {
-            let spliced_node = Box::leak(Box::new(DeletableNode::new(item))).into();
+            let spliced_node = Box::leak(Box::new(Node::new(item))).into();
             let node_prev = match self.current {
                 None => self.list.tail,
                 Some(node) => node.as_ref().prev,
@@ -1476,10 +1476,10 @@ impl<'a, T> CursorMut<'a, T> {
         }
     }
 
-    /// Removes the current element from the `DeletableLinkedList`.
+    /// Removes the current element from the `LinkedList`.
     ///
     /// The element that was removed is returned, and the cursor is
-    /// moved to point to the next element in the `DeletableLinkedList`.
+    /// moved to point to the next element in the `LinkedList`.
     ///
     /// If the cursor is currently pointing to the "ghost" non-element then no element
     /// is removed and `None` is returned.
@@ -1493,14 +1493,14 @@ impl<'a, T> CursorMut<'a, T> {
         }
     }
 
-    /// Removes the current element from the `DeletableLinkedList` without deallocating the list node.
+    /// Removes the current element from the `LinkedList` without deallocating the list node.
     ///
-    /// The node that was removed is returned as a new `DeletableLinkedList` containing only this node.
-    /// The cursor is moved to point to the next element in the current `DeletableLinkedList`.
+    /// The node that was removed is returned as a new `LinkedList` containing only this node.
+    /// The cursor is moved to point to the next element in the current `LinkedList`.
     ///
     /// If the cursor is currently pointing to the "ghost" non-element then no element
     /// is removed and `None` is returned.
-    pub fn remove_current_as_list(&mut self) -> Option<DeletableLinkedList<T>> {
+    pub fn remove_current_as_list(&mut self) -> Option<LinkedList<T>> {
         let mut unlinked_node = self.current?;
         unsafe {
             self.current = unlinked_node.as_ref().next;
@@ -1508,7 +1508,7 @@ impl<'a, T> CursorMut<'a, T> {
 
             unlinked_node.as_mut().prev = None;
             unlinked_node.as_mut().next = None;
-            Some(DeletableLinkedList {
+            Some(LinkedList {
                 head: Some(unlinked_node),
                 tail: Some(unlinked_node),
                 len: 1,
@@ -1517,11 +1517,11 @@ impl<'a, T> CursorMut<'a, T> {
         }
     }
 
-    /// Inserts the elements from the given `DeletableLinkedList` after the current one.
+    /// Inserts the elements from the given `LinkedList` after the current one.
     ///
     /// If the cursor is pointing at the "ghost" non-element then the new elements are
-    /// inserted at the start of the `DeletableLinkedList`.
-    pub fn splice_after(&mut self, list: DeletableLinkedList<T>) {
+    /// inserted at the start of the `LinkedList`.
+    pub fn splice_after(&mut self, list: LinkedList<T>) {
         unsafe {
             let (splice_head, splice_tail, splice_len) = match list.detach_all_nodes() {
                 Some(parts) => parts,
@@ -1545,11 +1545,11 @@ impl<'a, T> CursorMut<'a, T> {
         }
     }
 
-    /// Inserts the elements from the given `DeletableLinkedList` before the current one.
+    /// Inserts the elements from the given `LinkedList` before the current one.
     ///
     /// If the cursor is pointing at the "ghost" non-element then the new elements are
-    /// inserted at the end of the `DeletableLinkedList`.
-    pub fn splice_before(&mut self, list: DeletableLinkedList<T>) {
+    /// inserted at the end of the `LinkedList`.
+    pub fn splice_before(&mut self, list: LinkedList<T>) {
         unsafe {
             let (splice_head, splice_tail, splice_len) = match list.detach_all_nodes() {
                 Some(parts) => parts,
@@ -1575,8 +1575,8 @@ impl<'a, T> CursorMut<'a, T> {
     /// list retaining everything before.
     ///
     /// If the cursor is pointing at the "ghost" non-element then the entire contents
-    /// of the `DeletableLinkedList` are moved.
-    pub fn split_after(&mut self) -> DeletableLinkedList<T> {
+    /// of the `LinkedList` are moved.
+    pub fn split_after(&mut self) -> LinkedList<T> {
         let split_off_idx = if self.index == self.list.len {
             0
         } else {
@@ -1594,21 +1594,21 @@ impl<'a, T> CursorMut<'a, T> {
     /// list retaining everything after.
     ///
     /// If the cursor is pointing at the "ghost" non-element then the entire contents
-    /// of the `DeletableLinkedList` are moved.
-    pub fn split_before(&mut self) -> DeletableLinkedList<T> {
+    /// of the `LinkedList` are moved.
+    pub fn split_before(&mut self) -> LinkedList<T> {
         let split_off_idx = self.index;
         self.index = 0;
         unsafe { self.list.split_off_before_node(self.current, split_off_idx) }
     }
 }
 
-/// An iterator produced by calling `drain_filter` on DeletableLinkedList.
+/// An iterator produced by calling `drain_filter` on LinkedList.
 pub struct DrainFilter<'a, T: 'a, F: 'a>
 where
     F: FnMut(&mut T) -> bool,
 {
-    list: &'a mut DeletableLinkedList<T>,
-    it: Option<NonNull<DeletableNode<T>>>,
+    list: &'a mut LinkedList<T>,
+    it: Option<NonNull<Node<T>>>,
     pred: F,
     idx: usize,
     old_len: usize,
@@ -1702,7 +1702,7 @@ impl<T> ExactSizeIterator for IntoIter<T> {}
 
 impl<T> FusedIterator for IntoIter<T> {}
 
-impl<T> FromIterator<T> for DeletableLinkedList<T> {
+impl<T> FromIterator<T> for LinkedList<T> {
     fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
         let mut list = Self::new();
         list.extend(iter);
@@ -1710,7 +1710,7 @@ impl<T> FromIterator<T> for DeletableLinkedList<T> {
     }
 }
 
-impl<T> IntoIterator for DeletableLinkedList<T> {
+impl<T> IntoIterator for LinkedList<T> {
     type Item = T;
     type IntoIter = IntoIter<T>;
 
@@ -1721,7 +1721,7 @@ impl<T> IntoIterator for DeletableLinkedList<T> {
     }
 }
 
-impl<'a, T> IntoIterator for &'a DeletableLinkedList<T> {
+impl<'a, T> IntoIterator for &'a LinkedList<T> {
     type Item = &'a T;
     type IntoIter = Iter<'a, T>;
 
@@ -1730,7 +1730,7 @@ impl<'a, T> IntoIterator for &'a DeletableLinkedList<T> {
     }
 }
 
-impl<'a, T> IntoIterator for &'a mut DeletableLinkedList<T> {
+impl<'a, T> IntoIterator for &'a mut LinkedList<T> {
     type Item = &'a mut T;
     type IntoIter = IterMut<'a, T>;
 
@@ -1739,7 +1739,7 @@ impl<'a, T> IntoIterator for &'a mut DeletableLinkedList<T> {
     }
 }
 
-impl<T> Extend<T> for DeletableLinkedList<T> {
+impl<T> Extend<T> for LinkedList<T> {
     fn extend<I: IntoIterator<Item = T>>(&mut self, iter: I) {
         <Self as SpecExtend<I>>::spec_extend(self, iter);
     }
@@ -1750,19 +1750,19 @@ impl<T> Extend<T> for DeletableLinkedList<T> {
     }
 }
 
-impl<I: IntoIterator> SpecExtend<I> for DeletableLinkedList<I::Item> {
+impl<I: IntoIterator> SpecExtend<I> for LinkedList<I::Item> {
     default fn spec_extend(&mut self, iter: I) {
         iter.into_iter().for_each(move |elt| self.push_back(elt));
     }
 }
 
-impl<T> SpecExtend<DeletableLinkedList<T>> for DeletableLinkedList<T> {
-    fn spec_extend(&mut self, ref mut other: DeletableLinkedList<T>) {
+impl<T> SpecExtend<LinkedList<T>> for LinkedList<T> {
+    fn spec_extend(&mut self, ref mut other: LinkedList<T>) {
         self.append(other);
     }
 }
 
-impl<'a, T: 'a + Copy> Extend<&'a T> for DeletableLinkedList<T> {
+impl<'a, T: 'a + Copy> Extend<&'a T> for LinkedList<T> {
     fn extend<I: IntoIterator<Item = &'a T>>(&mut self, iter: I) {
         self.extend(iter.into_iter().cloned());
     }
@@ -1773,7 +1773,7 @@ impl<'a, T: 'a + Copy> Extend<&'a T> for DeletableLinkedList<T> {
     }
 }
 
-impl<T: PartialEq> PartialEq for DeletableLinkedList<T> {
+impl<T: PartialEq> PartialEq for LinkedList<T> {
     fn eq(&self, other: &Self) -> bool {
         self.len() == other.len() && self.iter().eq(other)
     }
@@ -1783,22 +1783,22 @@ impl<T: PartialEq> PartialEq for DeletableLinkedList<T> {
     }
 }
 
-impl<T: Eq> Eq for DeletableLinkedList<T> {}
+impl<T: Eq> Eq for LinkedList<T> {}
 
-impl<T: PartialOrd> PartialOrd for DeletableLinkedList<T> {
+impl<T: PartialOrd> PartialOrd for LinkedList<T> {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         self.iter().partial_cmp(other)
     }
 }
 
-impl<T: Ord> Ord for DeletableLinkedList<T> {
+impl<T: Ord> Ord for LinkedList<T> {
     #[inline]
     fn cmp(&self, other: &Self) -> Ordering {
         self.iter().cmp(other)
     }
 }
 
-impl<T: Clone> Clone for DeletableLinkedList<T> {
+impl<T: Clone> Clone for LinkedList<T> {
     fn clone(&self) -> Self {
         self.iter().cloned().collect()
     }
@@ -1817,13 +1817,13 @@ impl<T: Clone> Clone for DeletableLinkedList<T> {
     }
 }
 
-impl<T: fmt::Debug> fmt::Debug for DeletableLinkedList<T> {
+impl<T: fmt::Debug> fmt::Debug for LinkedList<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_list().entries(self).finish()
     }
 }
 
-impl<T: Hash> Hash for DeletableLinkedList<T> {
+impl<T: Hash> Hash for LinkedList<T> {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.len().hash(state);
         for elt in self {
@@ -1832,10 +1832,10 @@ impl<T: Hash> Hash for DeletableLinkedList<T> {
     }
 }
 
-// Ensure that `DeletableLinkedList` and its read-only iterators are covariant in their type parameters.
+// Ensure that `LinkedList` and its read-only iterators are covariant in their type parameters.
 #[allow(dead_code)]
 fn assert_covariance() {
-    fn a<'a>(x: DeletableLinkedList<&'static str>) -> DeletableLinkedList<&'a str> {
+    fn a<'a>(x: LinkedList<&'static str>) -> LinkedList<&'a str> {
         x
     }
     fn b<'i, 'a>(x: Iter<'i, &'static str>) -> Iter<'i, &'a str> {
@@ -1846,9 +1846,9 @@ fn assert_covariance() {
     }
 }
 
-unsafe impl<T: Send> Send for DeletableLinkedList<T> {}
+unsafe impl<T: Send> Send for LinkedList<T> {}
 
-unsafe impl<T: Sync> Sync for DeletableLinkedList<T> {}
+unsafe impl<T: Sync> Sync for LinkedList<T> {}
 
 unsafe impl<T: Sync> Send for Iter<'_, T> {}
 

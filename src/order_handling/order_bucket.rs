@@ -1,11 +1,13 @@
 //use crate::order_handling::deletable_list::*;
 use crate::order_handling::order::*;
 use crate::primitives::*;
+extern crate libc;
 
 use std::cmp::Ordering;
 use std::collections::VecDeque;
 //use std::hash::{Hash, Hasher};
-use std::collections::LinkedList;
+use crate::order_handling::public_list::*;
+use crate::order_handling::public_list::LinkedList;
 use std::rc::{Rc, Weak};
 
 use arr_macro::arr;
@@ -42,7 +44,7 @@ impl OrderBucket {
     pub fn new(price: Price) -> OrderBucket {
         OrderBucket {
             price: price,
-            total_volume: Volume::new(0),
+            total_volume: Volume(0),
             size: 0,
             order_queue: LinkedList::new(),
             //map   order_map: HashMap::with_capacity(DEFAULT_CAPACITY),
@@ -51,7 +53,7 @@ impl OrderBucket {
 
     pub fn insert_order(&mut self, order: Order) {
         self.size += 1;
-        self.total_volume += order.volume;
+        self.total_volume += order.remaining_volume();
 
         //map   self.order_queue.push_back(Rc::downgrade(&order_rc));
         self.order_queue.push_back(order);
@@ -81,7 +83,22 @@ impl OrderBucket {
     /// #Returns how much volume was matched
     pub fn match_orders(&mut self, volume: &Volume) -> Volume {
         let mut unmatched_volume = volume.clone();
+        //println!("Unmatched Volume: {}, Bucket Volume: {}", *unmatched_volume, *self.total_volume);
         while unmatched_volume.get() > 0 && !self.order_queue.is_empty() {
+            let sum: u64 = self
+                .order_queue
+                .iter()
+                .map(|o| *(o.remaining_volume()))
+                .sum();
+            /*
+            if sum != *self.total_volume {
+                println!("Order queue misaccounting");
+                println!("");
+            }
+             else {
+                println!("Unmatched Volume: {}, Bucket Volume: {}", *unmatched_volume, *self.total_volume);
+             }
+             */
             let order = self.order_queue.front().unwrap();
 
             //map match order.upgrade() {

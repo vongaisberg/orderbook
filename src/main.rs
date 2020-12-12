@@ -4,11 +4,11 @@
 #![allow(unused_assignments)]
 #![allow(unused_imports)]
 #![feature(async_closure)]
-//#![feature(box_syntax)]
-//#![feature(dropck_eyepatch)]
-//#![feature(specialization)]
-//#![feature(extend_one)]
-//#![feature(exact_size_is_empty)]
+#![feature(box_syntax)]
+#![feature(dropck_eyepatch)]
+#![feature(specialization)]
+#![feature(extend_one)]
+#![feature(exact_size_is_empty)]
 
 //mod bit_set;
 pub mod exchange;
@@ -17,6 +17,7 @@ pub mod order_handling;
 use crate::order_handling::order::*;
 use crate::order_handling::order_book::*;
 use crate::order_handling::order_bucket::OrderBucket;
+use rand::distributions::{Distribution, Normal};
 use std::rc::Rc;
 
 mod primitives;
@@ -24,13 +25,19 @@ use crate::primitives::*;
 
 use rand::Rng;
 use std::cell::Cell;
+use std::cmp::max;
 
 use std::time::{Duration, Instant};
 
 use std::{thread, time};
 
+use crate::exchange::account::*;
+use crate::exchange::commands::*;
+use crate::exchange::exchange::*;
+
 fn main() {
-    println!("test")
+    test_exchange();
+    //println!("test")
     /*     let mut vec = BitVec::from_elem(700, true);
     vec.set(0, false);
     vec.set(1, false);
@@ -39,6 +46,62 @@ fn main() {
     //test_hot_set_index();
     // benchmark_order_book();
     //test_order_book();
+}
+
+const COUNT: usize = 100_000;
+const SECOND_COUNT: usize = 1000;
+
+fn test_exchange() {
+    let mut rng = rand::thread_rng();
+    let mut ex = Exchange::new();
+
+    let queue = unsafe {
+        let mut arr: Box<[OrderCommand; COUNT]> = Box::new(std::mem::uninitialized());
+        let mut i = 0;
+        for item in &mut arr[..] {
+            // println!("OrderCommand: {}", i);
+            std::ptr::write(
+                item,
+                OrderCommand::Trade(TradeCommand {
+                    ticker: 0,
+                    side: if rng.gen_range(0u64, 2u64) == 0 {
+                        OrderSide::ASK
+                    } else {
+                        OrderSide::BID
+                    },
+                    volume: Volume(rng.gen_range(1, 150)),
+                    limit: Price(rng.gen_range(1, 20)),
+                    immediate_or_cancel: rng.gen_range(0, 12) < 3,
+                }),
+            );
+            i += 1;
+        }
+        arr
+    };
+    let now = Instant::now();
+    for j in 0..SECOND_COUNT {
+        for i in 0..COUNT {
+            ex.trade(&queue[i]);
+            // println!("Trade Nr. {}", i);
+        }
+    }
+    println!(
+        "Number of trades: {}, Milliseconds: {}, MTps: {}",
+        COUNT * SECOND_COUNT,
+        now.elapsed().as_millis(),
+        ((COUNT as f32) * (SECOND_COUNT as f32))
+            / ((now.elapsed().as_nanos() as f32) / 1_000_000_000f32)
+            / 1_000_000f32
+    );
+
+    for i in 1..21 {
+        println!(
+            "Price: {}, Volume: {}, Number: {}",
+            i,
+            *ex.orderbooks[0].orders_array[i].total_volume,
+            ex.orderbooks[0].orders_array[i].size
+        );
+    }
 }
 
 #[test]
@@ -152,8 +215,8 @@ fn benchmark_order_book() {
             } else {
                 OrderSide::BID
             },
-            limit: Price::new(rng.gen_range(1, 750)),
-            volume: Volume::new(rng.gen_range(1, 10)),
+            limit: Price(rng.gen_range(1, 750)),
+            volume: Volume(rng.gen_range(1, 10)),
             id: x as u64,
             //callback: Some(callback),
             //event_sender: None,
@@ -180,8 +243,8 @@ fn benchmark_order_book() {
                 } else {
                     OrderSide::BID
                 },
-                limit: Price::new(r1[x as usize]),
-                volume: Volume::new(r5[x as usize]),
+                limit: Price(r1[x as usize]),
+                volume: Volume(r5[x as usize]),
                 id: LOOPS as u64 + x as u64,
                 //callback: Some(callback),
                 //event_sender: None,

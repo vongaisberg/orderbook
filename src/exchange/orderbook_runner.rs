@@ -2,12 +2,11 @@ use crate::order_handling::order::*;
 use crate::order_handling::order::*;
 use crate::order_handling::order_book::OrderBook;
 
-use tokio::sync::mpsc::*;
 
 use std::cell::RefCell;
 
 const CHANNEL_CAPACITY: usize = 100;
-
+/*
 pub struct OrderBookRunner {
     orderbook: OrderBook,
     event_sender: Sender<OrderEvent>,
@@ -31,3 +30,4 @@ impl OrderBookRunner {
         self.orderbook.insert_order(order);
     }
 }
+*/
