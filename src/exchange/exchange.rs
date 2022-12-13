@@ -43,7 +43,7 @@ impl<'a> Exchange {
             }
         }
     */
-    pub fn trade(&mut self, order_command: &OrderCommand) -> Result<(), String> {
+    pub fn trade(&mut self, order_command: &OrderCommand) {
         match order_command {
             OrderCommand::Trade(trade) => {
                 //self.check_asset_existance(trade.ticker)?;
@@ -54,16 +54,13 @@ impl<'a> Exchange {
                     trade.limit,
                     trade.volume,
                     trade.side,
-                    //None,
                     trade.immediate_or_cancel,
                 );
                 book.insert_order(order);
-                Ok(())
             }
             OrderCommand::Cancel(cancel) => {
                 let book = &mut self.orderbooks[cancel.ticker];
-                book.remove_order(cancel.order_id);
-                Ok(())
+                book.cancel_order(cancel.order_id);
             }
         }
     }

@@ -4,6 +4,8 @@
     // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
     "version": "0.2.0",
     "configurations": [
+        
+
         {
             "type": "lldb",
             "request": "launch",
@@ -40,6 +42,21 @@
             },
             "args": [],
             "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "custom",
+            "name": "Open a core dump",
+            "initCommands": [
+                "target create -c ${input:coreFileName}"
+            ]
+        }
+    ],
+    "inputs": [
+        {
+            "id": "coreFileName",
+            "type": "promptString",
+            "description": "Enter core file path"
         }
     ]
 }

@@ -1,5 +1,4 @@
 use crate::order_handling::order::OrderSide;
-use crate::primitives::*;
 
 pub trait Command<'a> {
     fn sender(&self) -> &'a str;
@@ -13,8 +12,8 @@ pub enum OrderCommand {
 pub struct TradeCommand {
     pub ticker: usize,
     pub side: OrderSide,
-    pub volume: Volume,
-    pub limit: Price,
+    pub volume: u64,
+    pub limit: u64,
     pub immediate_or_cancel: bool,
 }
 

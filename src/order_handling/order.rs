@@ -1,8 +1,6 @@
 use std::cell::{Cell, RefCell};
 use std::ops::Neg;
 
-use crate::primitives::*;
-
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum OrderSide {
     ASK,
@@ -22,20 +20,24 @@ impl Neg for OrderSide {
 #[derive(Debug)]
 pub enum OrderEvent {
     ///How much volume was filled and how much Value was payed for it
-    Filled(u64, Volume, Value),
+    //id, volume, value
+    Filled(u64, u64, u64),
+    //id
     Canceled(u64),
 }
 
+#[derive(Debug)]
 pub struct Order {
-    pub limit: Price,
-    pub volume: Volume,
+    pub limit: u64,
+    pub volume: u64,
     pub side: OrderSide,
     pub id: u64,
     pub immediate_or_cancel: bool,
 
     //pub event_sender: Option<RefCell<Sender<OrderEvent>>>,
-    pub filled_volume: Cell<Volume>,
-    pub filled_value: Cell<Value>,
+    pub filled_volume: Cell<u64>,
+    pub filled_value: Cell<u64>,
+    pub is_canceled: Cell<bool>,
 }
 
 impl PartialEq for Order {
@@ -47,8 +49,8 @@ impl PartialEq for Order {
 impl Order {
     pub fn new(
         id: u64,
-        limit: Price,
-        volume: Volume,
+        limit: u64,
+        volume: u64,
         side: OrderSide,
         //event_sender: Option<RefCell<Sender<OrderEvent>>>,
         immediate_or_cancel: bool,
@@ -59,19 +61,20 @@ impl Order {
             side: side,
             id: id,
             //event_sender: event_sender,
-            filled_volume: Cell::new(Volume::ZERO),
-            filled_value: Cell::new(Value::ZERO),
+            filled_volume: Cell::new(0),
+            filled_value: Cell::new(0),
             immediate_or_cancel: immediate_or_cancel,
+            is_canceled: Cell::new(false),
         }
     }
 
-    pub fn remaining_volume(&self) -> Volume {
+    pub fn remaining_volume(&self) -> u64 {
         self.volume - self.filled_volume.get()
     }
 
     //Will fill the order as much as possible and return how much fit in
     //Price ist just to set the filled_value correctly
-    pub fn fill(&self, volume: Volume, price: Price) -> Volume {
+    pub fn fill(&self, volume: u64, price: u64) -> u64 {
         //println!("Own volume: {}, Incoming volume: {}", *self.remaining_volume(), *volume);
         if self.remaining_volume() <= volume {
             let old_volume = self.remaining_volume();
@@ -96,17 +99,17 @@ impl Order {
     }
 
     pub fn is_filled(&self) -> bool {
-        self.remaining_volume().get() == 0
+        self.remaining_volume() == 0
     }
 
     /// Check if an INCOMING order would match at this price
-    pub fn matches_with(&self, price: &Price) -> bool {
+    pub fn matches_with(&self, price: u64) -> bool {
         match self.side {
             // ask orders want a higher price
-            OrderSide::ASK => (self.limit <= *price),
+            OrderSide::ASK => (self.limit <= price),
 
             // bid orders want a lower price
-            OrderSide::BID => (self.limit >= *price),
+            OrderSide::BID => (self.limit >= price),
         }
     }
 
@@ -133,6 +136,7 @@ impl Order {
     /// Call the callback function
     /// Execute this when the order gets removed from the orderbook without being completely filled
     pub fn cancel(&self) {
+        self.is_canceled.set(true);
         /*
         assert!(!self.is_filled());
         match &self.event_sender {
