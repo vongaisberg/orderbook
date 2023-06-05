@@ -51,7 +51,7 @@
 // ///
 // /// This `struct` is created by [`LinkedList::iter()`]. See its
 // /// documentation for more.
-// pub struct Iter<'a, T: 'a> {
+// pub struct Iter< T: 'a> {
 //     head: Option<NonNull<Node<T>>>,
 //     tail: Option<NonNull<Node<T>>>,
 //     len: usize,
@@ -59,7 +59,7 @@
 // }
 
 // impl<T: fmt::Debug> fmt::Debug for Iter<'_, T> {
-//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+//     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
 //         f.debug_tuple("Iter").field(&self.len).finish()
 //     }
 // }
@@ -77,7 +77,7 @@
 // /// This `struct` is created by [`LinkedList::iter_mut()`]. See its
 // /// documentation for more.
 
-// pub struct IterMut<'a, T: 'a> {
+// pub struct IterMut< T: 'a> {
 //     // We do *not* exclusively own the entire list here, references to node's `element`
 //     // have been handed out by the iterator! So be careful when using this; the methods
 //     // called must be aware that there can be aliasing pointers to `element`.
@@ -88,7 +88,7 @@
 // }
 // /*
 // impl<T: fmt::Debug> fmt::Debug for IterMut<'_, T> {
-//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+//     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
 //         f.debug_tuple("IterMut")
 //             .field(&self.list)
 //             .field(&self.len)
@@ -109,7 +109,7 @@
 // }
 
 // impl<T: fmt::Debug> fmt::Debug for IntoIter<T> {
-//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+//     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
 //         f.debug_tuple("IntoIter").field(&self.list).finish()
 //     }
 // }
@@ -1037,9 +1037,9 @@
 
 // unsafe impl<#[may_dangle] T> Drop for LinkedList<T> {
 //     fn drop(&mut self) {
-//         struct DropGuard<'a, T>(&'a mut LinkedList<T>);
+//         struct DropGuard< T>(&'a mut LinkedList<T>);
 
-//         impl<'a, T> Drop for DropGuard<'a, T> {
+//         impl< T> Drop for DropGuard< T> {
 //             fn drop(&mut self) {
 //                 // Continue the same loop we do below. This only runs when a destructor has
 //                 // panicked. If another one panics this will abort.
@@ -1055,7 +1055,7 @@
 //     }
 // }
 
-// impl<'a, T> Iterator for Iter<'a, T> {
+// impl< T> Iterator for Iter< T> {
 //     type Item = &'a T;
 
 //     #[inline]
@@ -1084,7 +1084,7 @@
 //     }
 // }
 
-// impl<'a, T> DoubleEndedIterator for Iter<'a, T> {
+// impl< T> DoubleEndedIterator for Iter< T> {
 //     #[inline]
 //     fn next_back(&mut self) -> Option<&'a T> {
 //         if self.len == 0 {
@@ -1105,7 +1105,7 @@
 
 // impl<T> FusedIterator for Iter<'_, T> {}
 
-// impl<'a, T> Iterator for IterMut<'a, T> {
+// impl< T> Iterator for IterMut< T> {
 //     type Item = &'a mut T;
 
 //     #[inline]
@@ -1134,7 +1134,7 @@
 //     }
 // }
 
-// impl<'a, T> DoubleEndedIterator for IterMut<'a, T> {
+// impl< T> DoubleEndedIterator for IterMut< T> {
 //     #[inline]
 //     fn next_back(&mut self) -> Option<&'a mut T> {
 //         if self.len == 0 {
@@ -1214,7 +1214,7 @@
 // /// tail of the list.
 // ///
 // /// When created, cursors start at the front of the list, or the "ghost" non-element if the list is empty.
-// pub struct Cursor<'a, T: 'a> {
+// pub struct Cursor< T: 'a> {
 //     index: usize,
 //     current: Option<NonNull<Node<T>>>,
 //     list: &'a LinkedList<T>,
@@ -1236,7 +1236,7 @@
 // }
 // /*
 // impl<T: fmt::Debug> fmt::Debug for Cursor<'_, T> {
-//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+//     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
 //         f.debug_tuple("Cursor")
 //             .field(&self.list)
 //             .field(&self.index())
@@ -1254,14 +1254,14 @@
 // /// Cursors always rest between two elements in the list, and index in a logically circular way.
 // /// To accommodate this, there is a "ghost" non-element that yields `None` between the head and
 // /// tail of the list.
-// pub struct CursorMut<'a, T: 'a> {
+// pub struct CursorMut< T: 'a> {
 //     index: usize,
 //     current: Option<NonNull<Node<T>>>,
 //     list: &'a mut LinkedList<T>,
 // }
 // /*
 // impl<T: fmt::Debug> fmt::Debug for CursorMut<'_, T> {
-//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+//     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
 //         f.debug_tuple("CursorMut")
 //             .field(&self.list)
 //             .field(&self.index())
@@ -1269,7 +1269,7 @@
 //     }
 // }
 // */
-// impl<'a, T> Cursor<'a, T> {
+// impl< T> Cursor< T> {
 //     /// Returns the cursor position index within the `LinkedList`.
 //     ///
 //     /// This returns `None` if the cursor is currently pointing to the
@@ -1360,7 +1360,7 @@
 //     }
 // }
 
-// impl<'a, T> CursorMut<'a, T> {
+// impl< T> CursorMut< T> {
 //     /// Returns the cursor position index within the `LinkedList`.
 //     ///
 //     /// This returns `None` if the cursor is currently pointing to the
@@ -1466,7 +1466,7 @@
 
 // // Now the list editing operations
 
-// impl<'a, T> CursorMut<'a, T> {
+// impl< T> CursorMut< T> {
 //     /// Inserts a new element into the `LinkedList` after the current one.
 //     ///
 //     /// If the cursor is pointing at the "ghost" non-element then the new element is
@@ -1631,7 +1631,7 @@
 // }
 
 // /// An iterator produced by calling `drain_filter` on LinkedList.
-// pub struct DrainFilter<'a, T: 'a, F: 'a>
+// pub struct DrainFilter< T:  F: 'a>
 // where
 //     F: FnMut(&mut T) -> bool,
 // {
@@ -1675,11 +1675,11 @@
 //     F: FnMut(&mut T) -> bool,
 // {
 //     fn drop(&mut self) {
-//         struct DropGuard<'r, 'a, T, F>(&'r mut DrainFilter<'a, T, F>)
+//         struct DropGuard<'r,  T, F>(&'r mut DrainFilter< T, F>)
 //         where
 //             F: FnMut(&mut T) -> bool;
 
-//         impl<'r, 'a, T, F> Drop for DropGuard<'r, 'a, T, F>
+//         impl<'r,  T, F> Drop for DropGuard<'r,  T, F>
 //         where
 //             F: FnMut(&mut T) -> bool,
 //         {
@@ -1700,7 +1700,7 @@
 // where
 //     F: FnMut(&mut T) -> bool,
 // {
-//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+//     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
 //         f.debug_tuple("DrainFilter").field(&self.list).finish()
 //     }
 // }
@@ -1749,20 +1749,20 @@
 //     }
 // }
 
-// impl<'a, T> IntoIterator for &'a LinkedList<T> {
+// impl< T> IntoIterator for &'a LinkedList<T> {
 //     type Item = &'a T;
-//     type IntoIter = Iter<'a, T>;
+//     type IntoIter = Iter< T>;
 
-//     fn into_iter(self) -> Iter<'a, T> {
+//     fn into_iter(self) -> Iter< T> {
 //         self.iter()
 //     }
 // }
 
-// impl<'a, T> IntoIterator for &'a mut LinkedList<T> {
+// impl< T> IntoIterator for &'a mut LinkedList<T> {
 //     type Item = &'a mut T;
-//     type IntoIter = IterMut<'a, T>;
+//     type IntoIter = IterMut< T>;
 
-//     fn into_iter(self) -> IterMut<'a, T> {
+//     fn into_iter(self) -> IterMut< T> {
 //         self.iter_mut()
 //     }
 // }
@@ -1792,7 +1792,7 @@
 // }
 
 // /*
-// impl<'a, T: 'a + Copy> Extend<&'a T> for LinkedList<T> {
+// impl< T: 'a + Copy> Extend<&'a T> for LinkedList<T> {
 //     fn extend<I: IntoIterator<Item = &'a T>>(&mut self, iter: I) {
 //         self.extend(iter.into_iter().cloned());
 //     }
@@ -1849,7 +1849,7 @@
 // */
 
 // impl<T: fmt::Debug> fmt::Debug for LinkedList<T> {
-//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+//     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
 //         f.debug_list().entries(self).finish()
 //     }
 // }
@@ -1866,13 +1866,13 @@
 // // Ensure that `LinkedList` and its read-only iterators are covariant in their type parameters.
 // #[allow(dead_code)]
 // fn assert_covariance() {
-//     fn a<'a>(x: LinkedList<&'static str>) -> LinkedList<&'a str> {
+//     fn a(x: LinkedList<&'static str>) -> LinkedList<&'a str> {
 //         x
 //     }
 //     fn b<'i, 'a>(x: Iter<'i, &'static str>) -> Iter<'i, &'a str> {
 //         x
 //     }
-//     fn c<'a>(x: IntoIter<&'static str>) -> IntoIter<&'a str> {
+//     fn c(x: IntoIter<&'static str>) -> IntoIter<&'a str> {
 //         x
 //     }
 // }

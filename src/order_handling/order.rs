@@ -1,5 +1,9 @@
-use std::cell::{Cell, RefCell};
+use std::cell::{Cell, RefCell, RefMut};
+use std::collections::hash_map::{Entry, OccupiedEntry};
 use std::ops::Neg;
+use std::ptr::NonNull;
+
+use super::order_bucket::OrderBucket;
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum OrderSide {
@@ -27,45 +31,58 @@ pub enum OrderEvent {
 }
 
 #[derive(Debug)]
-pub struct Order {
+pub struct StandingOrder {
     pub limit: u64,
     pub volume: u64,
     pub side: OrderSide,
     pub id: u64,
-    pub immediate_or_cancel: bool,
 
     //pub event_sender: Option<RefCell<Sender<OrderEvent>>>,
     pub filled_volume: Cell<u64>,
     pub filled_value: Cell<u64>,
-    pub is_canceled: Cell<bool>,
+
+    pub next: Option<NonNull<Box<StandingOrder>>>,
+    pub prev: Option<NonNull<Box<StandingOrder>>>,
 }
 
-impl PartialEq for Order {
+impl PartialEq for StandingOrder {
     fn eq(&self, other: &Self) -> bool {
         self.id == other.id
     }
 }
 
-impl Order {
-    pub fn new(
-        id: u64,
-        limit: u64,
-        volume: u64,
-        side: OrderSide,
-        //event_sender: Option<RefCell<Sender<OrderEvent>>>,
-        immediate_or_cancel: bool,
-    ) -> Order {
-        Order {
-            limit: limit,
-            volume: volume,
-            side: side,
-            id: id,
+impl StandingOrder {
+    pub fn new(id: u64, limit: u64, volume: u64, side: OrderSide) -> StandingOrder {
+        StandingOrder {
+            limit,
+            volume,
+            side,
+            id,
             //event_sender: event_sender,
             filled_volume: Cell::new(0),
             filled_value: Cell::new(0),
-            immediate_or_cancel: immediate_or_cancel,
-            is_canceled: Cell::new(false),
+
+            next: None,
+            prev: None,
         }
+    }
+
+    pub fn remove_from_bucket(&mut self, bucket: &mut OrderBucket) {
+        match self.next {
+            None => bucket.tail = self.prev,
+            Some(mut n) => {
+                let entry = unsafe { n.as_mut() };
+                entry.prev = self.prev;
+            }
+        }
+        match self.prev {
+            None => bucket.head = self.next,
+            Some(mut p) => {
+                let entry = unsafe { p.as_mut() };
+                entry.next = self.next;
+            }
+        }
+        bucket.len -= 1;
     }
 
     pub fn remaining_volume(&self) -> u64 {
@@ -106,10 +123,10 @@ impl Order {
     pub fn matches_with(&self, price: u64) -> bool {
         match self.side {
             // ask orders want a higher price
-            OrderSide::ASK => (self.limit <= price),
+            OrderSide::ASK => self.limit <= price,
 
             // bid orders want a lower price
-            OrderSide::BID => (self.limit >= price),
+            OrderSide::BID => self.limit >= price,
         }
     }
 
@@ -127,24 +144,6 @@ impl Order {
                         self.filled_value.get(),
                     ))
 
-            }
-            None => Ok(()),
-        }
-        */
-    }
-
-    /// Call the callback function
-    /// Execute this when the order gets removed from the orderbook without being completely filled
-    pub fn cancel(&self) {
-        self.is_canceled.set(true);
-        /*
-        assert!(!self.is_filled());
-        match &self.event_sender {
-            Some(event_sender) => {
-                event_sender
-                    .borrow_mut()
-                    .send(OrderEvent::Canceled(self.id))
-                    .await
             }
             None => Ok(()),
         }

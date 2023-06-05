@@ -1,7 +1,7 @@
 use crate::order_handling::order::OrderSide;
 
-pub trait Command<'a> {
-    fn sender(&self) -> &'a str;
+pub trait Command {
+    fn sender(&self) -> &str;
 }
 
 pub enum OrderCommand {
@@ -23,7 +23,7 @@ pub struct CancelCommand {
     pub order_id: u64,
 }
 /*
-impl<'a> Command<'a> for OrderCommand<'a> {
+impl Command for OrderCommand {
     fn sender(&self) -> &'a str {
         match self {
             OrderCommand::Trade(b) => b.sender,

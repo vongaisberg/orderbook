@@ -1,24 +1,33 @@
+use crate::exchange::commands::TradeCommand;
 use crate::order_handling::order::*;
 use crate::order_handling::order_bucket::*;
 extern crate libc;
 
-use std::mem::MaybeUninit;
-use std::{collections::HashMap, ptr::NonNull};
-
+use linked_hash_map::VacantEntry;
+use log::{debug, error, info, trace, warn};
+use std::alloc::{alloc, dealloc, Layout};
+use std::boxed;
 use std::cell::Cell;
-
+use std::cell::RefCell;
+use std::cell::RefMut;
+use std::cmp::*;
+use std::collections::hash_map::Entry::{Occupied, Vacant};
+use std::collections::hash_map::OccupiedEntry;
+use std::mem;
+use std::mem::MaybeUninit;
+use std::ops::Drop;
 use std::rc::Rc;
 use std::result::Result::*;
+use std::{collections::HashMap, ptr::NonNull};
 
-use std::alloc::{alloc, dealloc, Layout};
-use std::cmp::*;
-use std::mem;
-use std::ops::Drop;
+use fxhash::FxBuildHasher;
 
 use crate::order_handling::public_list::*;
 
+use super::order_bucket;
+
 const MAX_NUMBER_OF_ORDERS: usize = 10_000_000;
-const MAX_PRICE: usize = 1_000;
+const MAX_PRICE: usize = 2_000;
 
 pub struct OrderBook {
     /// Maximum price allowed on this orderbook
@@ -32,18 +41,18 @@ pub struct OrderBook {
 
     // ask_depth_fenwick_tree: Vec<u64>,
     // bid_depth_fenwick_tree: Vec<u64>
-    order_map: Vec<u64>,
+    order_map: HashMap<u64, Box<StandingOrder>, FxBuildHasher>,
 
     /// Next Order ID
-    highest_id: usize,
+    highest_id: u64,
 
     /// Store orders sorted by price
-    pub orders_array: [Box<OrderBucket>; MAX_PRICE],
+    pub bucket_array: [Box<OrderBucket>; MAX_PRICE],
 }
 
 impl Default for OrderBook {
     fn default() -> OrderBook {
-        println!(
+        info!(
             "Size of order_array: {}MB",
             mem::size_of::<[Box<OrderBucket>; MAX_PRICE]>() as f32 / 1000000f32
         );
@@ -73,9 +82,12 @@ impl Default for OrderBook {
             max_price: MAX_PRICE as u64,
             min_ask_price: MAX_PRICE as u64,
             max_bid_price: 0,
-            order_map: vec![0; 100_000_000],
+            order_map: HashMap::with_capacity_and_hasher(
+                MAX_NUMBER_OF_ORDERS,
+                FxBuildHasher::default(),
+            ),
             highest_id: 0,
-            orders_array: orders_array,
+            bucket_array: orders_array.into(),
         }
     }
 }
@@ -91,7 +103,7 @@ impl OrderBook {
     /// The incoming order will possibly take liquidity from the orderbook.
     ///
     ///
-    fn match_order(&mut self, order: &mut Order) {
+    fn match_order(&mut self, order: &mut StandingOrder) {
         // Volume that remains in the incoming order
         let mut vol = order.volume;
         // Value of the already matched volume
@@ -114,14 +126,28 @@ impl OrderBook {
                     }
                 }
             };
-            //println!("Best price: {}, Limit: {}, Side: {:?}, Bucket Volume: {:?}", *best_price, *order.limit, order.side, self.orders_array[best_price.get() as usize].total_volume);
-
-            let matched_volume = self.orders_array[best_price as usize].match_orders(vol);
-            //println!("Matched volume: {}", *matched_volume);
-            vol -= matched_volume;
-            val += matched_volume * best_price;
-
-            if self.orders_array[best_price as usize].total_volume == 0 {
+            // println!(
+            //     "Best price: {}, Limit: {}, Side: {:?}",
+            //     best_price, order.limit, order.side
+            // );
+            let mut empty = true;
+            //Loop until bucket is empty
+            while let Some((matched_volume, canceled_order)) =
+                OrderBucket::match_orders(vol, self, best_price)
+            {
+                //Loop gets entered at least once, so bucket is not empty
+                empty = false;
+                // println!("Matched volume: {}", matched_volume);
+                vol -= matched_volume;
+                val += matched_volume * best_price;
+                if let Some(canceled_order) = canceled_order {
+                    self.cancel_order(canceled_order)
+                }
+                if vol == 0 {
+                    break;
+                }
+            }
+            if empty {
                 match order.side {
                     OrderSide::ASK => self.max_bid_price -= 1,
                     OrderSide::BID => self.min_ask_price += 1,
@@ -138,39 +164,53 @@ impl OrderBook {
         }
     }
 
-    pub fn insert_order(&mut self, mut order: Order) {
+    pub fn insert_order(&mut self, trade: &TradeCommand) {
         // println!(
         //     "Insert order: {}, Limit: {}, Side: {:?}, Volume: {:?}",
-        //     order.id, order.limit.0, order.side, order.volume
+        //     order.id, order.limit, order.side, order.volume
         // );
+
+        let mut order =
+            StandingOrder::new(self.increment_id(), trade.limit, trade.volume, trade.side);
         self.match_order(&mut order);
         // println!("Matched, order: {:?}", order);
 
         if !order.is_filled() {
-            if order.immediate_or_cancel {
-                order.cancel();
-            } else {
-                match order.side {
-                    OrderSide::ASK => self.min_ask_price = min(self.min_ask_price, order.limit),
-                    OrderSide::BID => self.max_bid_price = max(self.max_bid_price, order.limit),
-                }
-                let id = order.id;
-                self.order_map[id as usize] = order.limit;
-                self.orders_array[order.limit as usize].insert_order(order);
+            match order.side {
+                OrderSide::ASK => self.min_ask_price = min(self.min_ask_price, order.limit),
+                OrderSide::BID => self.max_bid_price = max(self.max_bid_price, order.limit),
+            }
+            let id = order.id;
+            let limit = order.limit;
+
+            //Get a raw pointer to the order and put it into order_map´
+
+            let boxed_order = Box::new(order);
+            let entry = self.order_map.entry(id);
+
+            let occupied_entry = entry.insert_entry(boxed_order);
+            self.bucket_array[limit as usize].insert_order(occupied_entry.get().into());
+
+            //Set pointer to the HashMap Entry into the Orde
+        }
+    }
+
+    pub fn cancel_order(&mut self, id: u64) {
+        match self.order_map.entry(id) {
+            Vacant(v) => (),
+            Occupied(entry) => {
+                //Remove from hashmap
+                let mut order = entry.remove();
+
+                //Remove from linked list
+                order.remove_from_bucket(&mut self.bucket_array[order.limit as usize])
             }
         }
     }
-    pub fn cancel_order(&mut self, id: u64) {
-        let price = self.order_map[id as usize];
 
-        // println!("Removing element: {}", id);
-
-        self.orders_array[price as usize].remove_order(id);
-    }
-
-    pub fn increment_id(&mut self) -> usize {
+    pub fn increment_id(&mut self) -> u64 {
         self.highest_id += 1;
-        self.highest_id - 1usize
+        self.highest_id - 1
     }
 }
 

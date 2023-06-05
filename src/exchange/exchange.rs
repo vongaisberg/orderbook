@@ -15,7 +15,7 @@ pub struct Exchange {
     pub orderbooks: [OrderBook; ORDER_BOOK_COUNT],
 }
 
-impl<'a> Exchange {
+impl Exchange {
     pub fn new() -> Self {
         Self::default()
     }
@@ -48,15 +48,9 @@ impl<'a> Exchange {
             OrderCommand::Trade(trade) => {
                 //self.check_asset_existance(trade.ticker)?;
                 let book = &mut (self.orderbooks)[trade.ticker];
-                let id = book.increment_id();
-                let order = Order::new(
-                    id as u64,
-                    trade.limit,
-                    trade.volume,
-                    trade.side,
-                    trade.immediate_or_cancel,
-                );
-                book.insert_order(order);
+                // let id = book.increment_id();
+                // let order = StandingOrder::new(id as u64, trade.limit, trade.volume, trade.side.clone());
+                book.insert_order(trade);
             }
             OrderCommand::Cancel(cancel) => {
                 let book = &mut self.orderbooks[cancel.ticker];
