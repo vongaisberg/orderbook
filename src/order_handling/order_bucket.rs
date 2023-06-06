@@ -7,6 +7,7 @@ use std::borrow::{Borrow, BorrowMut};
 use std::collections::hash_map::OccupiedEntry;
 use std::collections::{LinkedList, VecDeque};
 use std::ptr::NonNull;
+use std::sync::mpsc::Sender;
 use std::{cmp::Ordering, time};
 //use std::hash::{Hash, Hasher};
 use std::rc::{Rc, Weak};
@@ -111,7 +112,7 @@ impl OrderBucket {
         let order = unsafe { bucket.head.unwrap().as_ref() };
         // println!("Matching with: {:?}", order);
 
-        let filled_volume = order.fill(unmatched_volume, bucket.price);
+        let filled_volume = order.fill(unmatched_volume, bucket.price, &book.event_sender);
         // println!("Matched with: {:?}", order);
         unmatched_volume -= filled_volume;
         let mut canceled_order = None;

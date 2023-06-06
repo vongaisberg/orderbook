@@ -18,6 +18,7 @@ use std::mem::MaybeUninit;
 use std::ops::Drop;
 use std::rc::Rc;
 use std::result::Result::*;
+use std::sync::mpsc::Sender;
 use std::{collections::HashMap, ptr::NonNull};
 
 use fxhash::FxBuildHasher;
@@ -48,6 +49,8 @@ pub struct OrderBook {
 
     /// Store orders sorted by price
     pub bucket_array: [Box<OrderBucket>; MAX_PRICE],
+
+    pub event_sender: Option<Sender<OrderEvent>>,
 }
 
 impl Default for OrderBook {
@@ -87,7 +90,8 @@ impl Default for OrderBook {
                 FxBuildHasher::default(),
             ),
             highest_id: 0,
-            bucket_array: orders_array.into(),
+            bucket_array: orders_array,
+            event_sender: None,
         }
     }
 }
@@ -160,7 +164,7 @@ impl OrderBook {
         order.filled_volume.set(new_filled_vol);
         order.filled_value.set(val);
         if new_filled_vol > 0 {
-            order.notify();
+            order.notify(new_filled_vol, val, &self.event_sender);
         }
     }
 

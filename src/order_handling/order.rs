@@ -2,6 +2,7 @@ use std::cell::{Cell, RefCell, RefMut};
 use std::collections::hash_map::{Entry, OccupiedEntry};
 use std::ops::Neg;
 use std::ptr::NonNull;
+use std::sync::mpsc::Sender;
 
 use super::order_bucket::OrderBucket;
 
@@ -37,7 +38,6 @@ pub struct StandingOrder {
     pub side: OrderSide,
     pub id: u64,
 
-    //pub event_sender: Option<RefCell<Sender<OrderEvent>>>,
     pub filled_volume: Cell<u64>,
     pub filled_value: Cell<u64>,
 
@@ -91,15 +91,15 @@ impl StandingOrder {
 
     //Will fill the order as much as possible and return how much fit in
     //Price ist just to set the filled_value correctly
-    pub fn fill(&self, volume: u64, price: u64) -> u64 {
+    pub fn fill(&self, volume: u64, price: u64, sender: &Option<Sender<OrderEvent>>) -> u64 {
         //println!("Own volume: {}, Incoming volume: {}", *self.remaining_volume(), *volume);
         if self.remaining_volume() <= volume {
             let old_volume = self.remaining_volume();
-
             //Fill order completely
             self.filled_volume.set(self.volume);
-            self.filled_value.set(self.volume * price);
-            self.notify();
+            self.filled_value
+                .set(self.filled_value.get() + old_volume * price);
+            self.notify(old_volume, old_volume * price, sender);
 
             //Return what did fit in
             old_volume
@@ -109,7 +109,7 @@ impl StandingOrder {
             self.filled_value
                 .set(self.filled_value.get() + (volume * price));
 
-            self.notify();
+            self.notify(volume, volume * price, sender);
             //Return volume, because everything fit in
             volume
         }
@@ -132,21 +132,13 @@ impl StandingOrder {
 
     /// Call the callback function
     /// Execute this whenever the order state changes
-    pub fn notify(&self) {
-        /*
-        match &self.event_sender {
-            Some(event_sender) => {
-                event_sender
-                    .borrow_mut()
-                    .send(OrderEvent::Filled(
-                        self.id,
-                        self.filled_volume.get(),
-                        self.filled_value.get(),
-                    ))
-
-            }
-            None => Ok(()),
+    pub fn notify(&self, fill_volume: u64, fill_value: u64, sender: &Option<Sender<OrderEvent>>) {
+        if let Some(sender) = sender {
+            sender.send(OrderEvent::Filled(
+                self.id,
+                self.filled_volume.get(),
+                self.filled_value.get(),
+            ));
         }
-        */
     }
 }

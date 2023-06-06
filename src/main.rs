@@ -57,13 +57,17 @@ const COUNT: usize = 100_000;
 const SECOND_COUNT: usize = 1_00;
 static mut canceled: u64 = 0;
 
-fn build_random_order_command(rng: &mut ThreadRng, normal: Normal<f64>) -> OrderCommand {
+fn build_random_order_command(
+    rng: &mut ThreadRng,
+    normal_ask: Normal<f64>,
+    normal_bid: Normal<f64>,
+) -> OrderCommand {
     let side = if rng.gen_bool(0.5) {
         OrderSide::ASK
     } else {
         OrderSide::BID
     };
-    if rng.gen_bool(0.0) {
+    if rng.gen_bool(0.4) {
         unsafe { canceled += 1 };
 
         OrderCommand::Cancel(CancelCommand {
@@ -73,13 +77,13 @@ fn build_random_order_command(rng: &mut ThreadRng, normal: Normal<f64>) -> Order
     } else {
         OrderCommand::Trade(TradeCommand {
             ticker: 0,
-            side: (if rng.gen_bool(0.5) {
-                OrderSide::ASK
-            } else {
-                OrderSide::BID
-            }),
+            side,
             volume: rng.gen_range(1..10),
-            limit: normal.sample(rng) as u64,
+            limit: if side == OrderSide::ASK {
+                normal_ask.sample(rng) as u64
+            } else {
+                normal_bid.sample(rng) as u64
+            },
             //immediate_or_cancel: rng.gen_range(0, 12) < 3,
             immediate_or_cancel: false,
         })
@@ -89,14 +93,18 @@ fn build_random_order_command(rng: &mut ThreadRng, normal: Normal<f64>) -> Order
 fn test_exchange() {
     let mut rng = thread_rng();
     let mut ex = Exchange::new();
-    let normal = Normal::new(20f64, 5f64).unwrap();
+    let normal_bid = Normal::new(200f64, 15f64).unwrap();
+    let normal_ask = Normal::new(230f64, 15f64).unwrap();
 
     let queue = unsafe {
         let mut arr: Box<[OrderCommand; COUNT]> = Box::new(std::mem::uninitialized());
         let mut i = 0;
 
         for item in &mut arr[..] {
-            std::ptr::write(item, build_random_order_command(&mut rng, normal));
+            std::ptr::write(
+                item,
+                build_random_order_command(&mut rng, normal_ask, normal_bid),
+            );
 
             i += 1;
         }
