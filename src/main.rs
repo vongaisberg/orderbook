@@ -55,7 +55,7 @@ fn main() {
 
 const COUNT: usize = 100_000;
 const SECOND_COUNT: usize = 1_00;
-static mut canceled: u64 = 0;
+static mut CANCELED: u64 = 0;
 
 fn build_random_order_command(
     rng: &mut ThreadRng,
@@ -68,11 +68,11 @@ fn build_random_order_command(
         OrderSide::BID
     };
     if rng.gen_bool(0.4) {
-        unsafe { canceled += 1 };
+        unsafe { CANCELED += 1 };
 
         OrderCommand::Cancel(CancelCommand {
             ticker: 0,
-            order_id: unsafe { canceled },
+            order_id: unsafe { CANCELED },
         })
     } else {
         OrderCommand::Trade(TradeCommand {
@@ -238,7 +238,7 @@ fn callback(event: OrderEvent) {
 // #[test]
 fn benchmark_order_book() {
     let mut rng = rand::thread_rng();
-    let mut book = OrderBook::new();
+    let book = OrderBook::new();
 
     const LOOPS: usize = 10_000_000;
 
@@ -319,13 +319,13 @@ fn benchmark_order_book() {
 }
 
 fn benchmark_order_book2() {
-    let mut rng = rand::thread_rng();
-    let mut book = OrderBook::new();
+    let rng = rand::thread_rng();
+    let book = OrderBook::new();
 
     const LOOPS: usize = 10_000_000;
     let mut i = 0;
 
-    let mut order_queue: [Box<StandingOrder>; LOOPS] = unsafe {
+    let order_queue: [Box<StandingOrder>; LOOPS] = unsafe {
         let mut arr: [Box<StandingOrder>; LOOPS] = std::mem::uninitialized();
         for item in &mut arr[..] {
             //std::ptr::write(item, build_random_order(&mut rng, i));
