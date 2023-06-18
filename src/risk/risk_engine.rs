@@ -6,7 +6,7 @@ use std::{
 use crate::{
     exchange::{
         asset::{Symbol, SymbolType},
-        commands::{OrderCommand, TradeCommand},
+        commands::{CancelCommand, OrderCommand, TradeCommand},
         exchange::Exchange,
         exchange_settings::ExchangeSettings,
     },
@@ -24,19 +24,26 @@ pub enum RiskEngineResult {
 
     SymbolNotFound,
     UserNotFound,
+    OrderNotFound,
 }
 
-#[derive(Default)]
 pub struct RiskEngine {
-    participants: HashMap<u64, Mutex<Participant>>,
+    participants: HashMap<u64, Participant>,
     settings: ExchangeSettings,
     // participant_id, symbol_id
-    orders: HashMap<u64, (u64, u64, Mutex<RiskOrder>)>,
+    orders: HashMap<u64, (u64, u64, RiskOrder)>,
 }
 
 impl RiskEngine {
-    fn add_participant(&mut self, part: Participant) {
-        self.participants.insert(part.id, Mutex::new(part));
+    pub fn new(settings: ExchangeSettings) -> Self {
+        Self {
+            participants: HashMap::new(),
+            settings,
+            orders: HashMap::new(),
+        }
+    }
+    pub fn add_participant(&mut self, part: Participant) {
+        self.participants.insert(part.id, part);
     }
     pub fn process_command(&mut self, command: OrderCommand) -> RiskEngineResult {
         match command {
@@ -44,36 +51,66 @@ impl RiskEngine {
                 let symbol = &self.settings.symbols[command.symbol as usize];
                 let user = self.participants.get_mut(&command.participant_id);
                 match user {
-                    Some(user) => {
-                        let mut user = user.lock().unwrap();
-                        let base_asset = symbol.base_asset;
-                        let quote_asset = symbol.quote_asset;
-                        match symbol.symbol_type {
-                            SymbolType::ExchangePair => Self::place_exchange_order(
-                                &symbol,
-                                command,
-                                &mut *user,
-                                command,
-                                &mut self.orders,
-                            ),
-                            SymbolType::FuturesContract => todo!(),
-                            SymbolType::Option => todo!(),
+                    Some(user) => match symbol.symbol_type {
+                        SymbolType::ExchangePair => {
+                            Self::place_exchange_order(symbol, user, command, &mut self.orders)
                         }
-                    }
+                        SymbolType::FuturesContract => todo!(),
+                        SymbolType::Option => todo!(),
+                    },
                     None => RiskEngineResult::UserNotFound,
                 }
             }
-            OrderCommand::Cancel(command) => todo!(),
+            OrderCommand::Cancel(command) => {
+                let symbol = &self.settings.symbols[command.symbol as usize];
+                let user = self.participants.get_mut(&command.participant_id);
+                match user {
+                    Some(user) => match symbol.symbol_type {
+                        SymbolType::ExchangePair => RiskEngineResult::ValidForMatchingEngine,
+                        SymbolType::FuturesContract => todo!(),
+                        SymbolType::Option => todo!(),
+                    },
+                    None => RiskEngineResult::UserNotFound,
+                }
+            }
         }
     }
+
+    // fn cancel_exchange_order(
+    //     symbol: &Symbol,
+    //     user: &mut Participant,
+    //     command: CancelCommand,
+    //     orders: &mut HashMap<u64, (u64, u64, RiskOrder)>,
+    // ) -> RiskEngineResult {
+    //     match orders.remove(&command.order_id) {
+    //         Some((_, s_ymbol, order)) => {
+    //             let (pessimistic_asset, pessimistic_value) = TradeCommand::historic_pessimistic(
+    //                 order.side,
+    //                 order.limit,
+    //                 symbol,
+    //                 order.volume,
+    //             );
+
+    //             match user.assets.get(&pessimistic_asset) {
+    //                 Some(user_asset) => {
+    //                     user.assets
+    //                         .insert(pessimistic_asset, user_asset + pessimistic_value);
+    //                     RiskEngineResult::ValidForMatchingEngine
+    //                 }
+    //                 None => todo!(),
+    //             }
+    //         }
+    //         None => RiskEngineResult::OrderNotFound,
+    //     }
+    // }
+
     fn place_exchange_order(
         symbol: &Symbol,
-        command: TradeCommand,
         user: &mut Participant,
         trade_command: TradeCommand,
-        orders: &mut HashMap<u64, (u64, u64, Mutex<RiskOrder>)>,
+        orders: &mut HashMap<u64, (u64, u64, RiskOrder)>,
     ) -> RiskEngineResult {
-        let (pessimistic_asset, pessimistic_value) = command.pessimistic(symbol);
+        let (pessimistic_asset, pessimistic_value) = trade_command.pessimistic(symbol);
 
         match user.assets.get(&pessimistic_asset) {
             Some(user_asset) => {
@@ -86,7 +123,7 @@ impl RiskEngine {
                         (
                             trade_command.participant_id,
                             trade_command.symbol,
-                            Mutex::new(RiskOrder::from(trade_command)),
+                            RiskOrder::from(trade_command),
                         ),
                     );
                     RiskEngineResult::ValidForMatchingEngine
@@ -106,18 +143,15 @@ impl RiskEngine {
                     .get_mut(&id)
                     .expect("Order filled that was not known to the risk engine");
 
-                let participant = self.participants.get(participant_id).expect(
+                let participant = self.participants.get_mut(participant_id).expect(
                     "Order was filled for participant that was not known to the risk engine.",
                 );
-
-                let order = order.lock().unwrap();
-                let mut participant = participant.lock().unwrap();
 
                 let symbol = &self.settings.symbols[*symbol_id as usize];
 
                 // The pessimistic amount of value that was previously deducted for the filled amount of value
                 let (pessimistic_asset, pessimistic_value) =
-                    TradeCommand::historic_pessimistic(order.side, order.limit, &symbol, volume);
+                    TradeCommand::historic_pessimistic(order.side, order.limit, symbol, volume);
 
                 let (rising_asset, rising_value) = match order.side {
                     OrderSide::BID => (symbol.quote_asset, volume),
@@ -144,12 +178,9 @@ impl RiskEngine {
                     .get_mut(&id)
                     .expect("Order filled that was not known to the risk engine");
 
-                let participant = self.participants.get(participant_id).expect(
+                let participant = self.participants.get_mut(participant_id).expect(
                     "Order was filled for participant that was not known to the risk engine.",
                 );
-
-                let order = order.get_mut().unwrap();
-                let mut participant = participant.lock().unwrap();
 
                 let symbol = &self.settings.symbols[*symbol_id as usize];
 

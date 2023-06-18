@@ -1,9 +1,12 @@
 use crate::exchange::asset::*;
-use std::collections::HashMap;
+use std::{collections::HashMap, default};
 
 use super::risk_order::RiskOrder;
 
 /// A market participant holding assets and position
+///
+
+#[derive(Default)]
 pub struct Participant {
     /// A unique id representing the account
     pub id: u64,

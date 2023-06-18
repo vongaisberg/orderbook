@@ -10,6 +10,21 @@ use crate::risk::participant;
 use super::event::MatchingEngineEvent;
 use super::order_bucket::OrderBucket;
 
+// #[derive(Debug)]
+// pub struct NonNull<T>(NonNull<T>);
+// unsafe impl<T> Send for NonNull<T> {}
+// impl<T> NonNull<T> {
+//     pub fn as_mut(mut self) -> &'static mut T {
+//         unsafe { self.0.as_mut() }
+//     }
+//     pub fn as_ref(mut self) -> &'static mut T {
+//         unsafe { &mut self.0.as_ref() }
+//     }
+//     pub fn from_nonnull(value: NonNull<T>) -> Self {
+//         Self(value)
+//     }
+// }
+
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum OrderSide {
     ASK,
@@ -88,14 +103,14 @@ impl StandingOrder {
 
     //Will fill the order as much as possible and return how much fit in
     //Price ist just to set the filled_value correctly
-    pub fn fill(&mut self, volume: u64, price: u64, sender: &Sender<MatchingEngineEvent>) -> u64 {
+    pub async fn fill(&mut self, volume: u64, price: u64, sender: &Sender<MatchingEngineEvent>) -> u64 {
         //println!("Own volume: {}, Incoming volume: {}", *self.remaining_volume(), *volume);
 
         if self.remaining_volume() <= volume {
             let old_volume = self.remaining_volume();
             //Fill order completely
             self.volume = 0;
-            self.notify(old_volume, old_volume * price, sender);
+            self.notify(old_volume, old_volume * price, sender).await;
 
             //Return what did fit in
             old_volume
@@ -103,7 +118,7 @@ impl StandingOrder {
             //Fill as much as possible
             self.volume -= volume;
 
-            self.notify(volume, volume * price, sender);
+            self.notify(volume, volume * price, sender).await;
             //Return volume, because everything fit in
             volume
         }
@@ -126,12 +141,12 @@ impl StandingOrder {
 
     /// Call the callback function
     /// Execute this whenever the order state changes
-    pub fn notify(&self, fill_volume: u64, fill_value: u64, sender: &Sender<MatchingEngineEvent>) {
-        sender.send(MatchingEngineEvent::Filled(
+    pub async fn notify(&self, fill_volume: u64, fill_value: u64, sender: &Sender<MatchingEngineEvent>) {
+        let _ = sender.send(MatchingEngineEvent::Filled(
             self.id,
             fill_volume,
             fill_value,
-        ));
+        )).await;
     }
 }
 

@@ -27,17 +27,10 @@ impl OrderBookProcessor {
     ) {
         let mut book = OrderBook::new(self.settings.clone(), senders);
 
-        let notify = |event: MatchingEngineEvent| {
-            match &event {
-                MatchingEngineEvent::Filled(id, _, _) => risk_router(&self.settings, id),
-                MatchingEngineEvent::Canceled(id) => todo!(),
-            };
-        };
-
         while let Some(order_command) = receiver.recv().await {
             match order_command {
                 OrderCommand::Trade(trade) => {
-                    book.insert_order(&trade);
+                    book.insert_order(&trade).await;
                 }
                 OrderCommand::Cancel(cancel) => {
                     book.cancel_order(cancel.order_id);

@@ -97,7 +97,7 @@ impl OrderBucket {
     /// Match as many orders as possible with a given amount of volume
     ///
     /// #Returns how much volume was matched
-    pub fn match_orders(
+    pub async fn match_orders(
         volume: u64,
         book: &mut OrderBook,
         best_price: u64,
@@ -111,7 +111,7 @@ impl OrderBucket {
         let order = unsafe { bucket.head.unwrap().as_mut() };
         // println!("Matching with: {:?}", order);
 
-        let filled_volume = order.fill(volume, bucket.price, &book.get_sender(order.participant_id));
+        let filled_volume = order.fill(volume, bucket.price, book.get_sender(order.participant_id)).await;
         // println!("Matched with: {:?}", order);
         let canceled_order = if order.is_filled() {
             // println!("Marked as filled, removing from bucket");

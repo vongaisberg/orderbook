@@ -127,7 +127,7 @@ async fn test_exchange() {
     let now = Instant::now();
 
     for i in 0..COUNT {
-        ex.trade(queue[i]);
+        ex.trade(queue[i]).await;
     }
 
     println!(

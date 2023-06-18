@@ -6,7 +6,9 @@ use crate::processor::order_book_processor::OrderBookProcessor;
 use crate::processor::risk_engine_processor::RiskEngineProcessor;
 use crate::risk::router::risk_router;
 
+use futures::executor::block_on;
 use std::collections::HashMap;
+use std::thread;
 use tokio::sync::mpsc::{channel, Receiver, Sender};
 use tokio::sync::RwLock;
 
@@ -24,9 +26,6 @@ pub struct Exchange {
 
 impl Exchange {
     pub fn new(settings: ExchangeSettings) -> Self {
-        let mut ex = Exchange::default();
-        ex.settings = settings.clone();
-
         let mut stage_1_senders = Vec::new();
         let mut stage_1_receivers = Vec::new();
         let mut stage_2_senders = Vec::new();
@@ -40,7 +39,7 @@ impl Exchange {
             stage_1_senders.push(tx);
             stage_1_receivers.push(rx);
         }
-        ex.order_senders = stage_1_senders;
+
         // Stage 2: One per book
         for i in 0..settings.symbols.len() {
             let (tx, rx) = channel::<OrderCommand>(1000);
@@ -59,23 +58,27 @@ impl Exchange {
             let rec = stage_1_receivers.remove(i as usize);
             let ev_rec = stage_3_receivers.remove(i as usize);
             let senders = stage_2_senders.clone();
+            let set = settings.clone();
             tokio::spawn(async {
-                let mut risk_engine = RiskEngineProcessor::new();
-                risk_engine.run(rec, senders, ev_rec);
+                let mut risk_engine = RiskEngineProcessor::new(set);
+                risk_engine.run(rec, senders, ev_rec).await;
             });
         }
 
         // Create Order Book Processors for each symbol
-        for (i, symbol) in settings.symbols.clone().iter().enumerate() {
-            let rev = stage_2_receivers.remove(i as usize);
+        for (i, symbol) in settings.symbols.iter().enumerate() {
+            let rev = stage_2_receivers.remove(i);
             let send = stage_3_senders.clone();
             let set = settings.clone();
-            tokio::spawn(async move {
-                OrderBookProcessor::new(set).run(rev, send);
+            thread::spawn(move || {
+                block_on(OrderBookProcessor::new(set).run(rev, send));
             });
         }
 
-        ex
+        Self {
+            settings,
+            order_senders: stage_1_senders,
+        }
     }
     /*
             pub fn add_account(&self, acc: Account) {
@@ -101,13 +104,13 @@ impl Exchange {
             }
         }
     */
-    pub fn trade(&mut self, order_command: OrderCommand) {
+    pub async fn trade(&mut self, order_command: OrderCommand) {
         let participant_id = match order_command {
             OrderCommand::Trade(trade) => trade.participant_id,
             OrderCommand::Cancel(cancel) => cancel.participant_id,
         };
         let shard = risk_router(&self.settings, &participant_id);
-        self.order_senders[shard].send(order_command);
+        let _ = self.order_senders[shard].send(order_command).await;
     }
     /*
     /// Check if an assets with that ticker exists on this exchange

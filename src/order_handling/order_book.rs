@@ -20,8 +20,8 @@ use std::mem::MaybeUninit;
 use std::ops::Drop;
 use std::rc::Rc;
 use std::result::Result::*;
-use tokio::sync::mpsc::Sender;
 use std::{collections::HashMap, ptr::NonNull};
+use tokio::sync::mpsc::Sender;
 
 use fxhash::FxBuildHasher;
 
@@ -59,7 +59,10 @@ pub struct OrderBook {
 }
 
 impl OrderBook {
-    pub fn new(settings: ExchangeSettings, event_senders: Vec<Sender<MatchingEngineEvent>>) -> OrderBook {
+    pub fn new(
+        settings: ExchangeSettings,
+        event_senders: Vec<Sender<MatchingEngineEvent>>,
+    ) -> OrderBook {
         info!(
             "Size of order_array: {}MB",
             mem::size_of::<[Box<OrderBucket>; MAX_PRICE]>() as f32 / 1000000f32
@@ -102,7 +105,7 @@ impl OrderBook {
         }
     }
 
-    pub fn get_sender(&self, participant_id: u64) -> &Sender<MatchingEngineEvent>{
+    pub fn get_sender(&self, participant_id: u64) -> &Sender<MatchingEngineEvent> {
         &self.event_senders[risk_router(&self.settings, &participant_id)]
     }
 
@@ -112,7 +115,7 @@ impl OrderBook {
     /// The incoming order will possibly take liquidity from the orderbook.
     ///
     ///
-    fn match_order(&mut self, order: &mut StandingOrder) {
+    async fn match_order(&mut self, order: &mut StandingOrder) {
         let mut filled_value = 0;
         let original_volume = order.volume;
 
@@ -140,7 +143,7 @@ impl OrderBook {
             let mut empty = true;
             //Loop until bucket is empty
             while let Some((matched_volume, canceled_order)) =
-                OrderBucket::match_orders(order.volume, self, best_price)
+                OrderBucket::match_orders(order.volume, self, best_price).await
             {
                 //Loop gets entered at least once, so bucket is not empty
                 empty = false;
@@ -166,12 +169,12 @@ impl OrderBook {
             order.notify(
                 original_volume - order.volume,
                 filled_value,
-                &self.get_sender(order.participant_id),
-            );
+                self.get_sender(order.participant_id),
+            ).await;
         }
     }
 
-    pub fn insert_order(&mut self, trade: &TradeCommand) {
+    pub async fn insert_order(&mut self, trade: &TradeCommand) {
         let mut order = StandingOrder::new(
             trade.id,
             trade.participant_id,
@@ -184,7 +187,7 @@ impl OrderBook {
         //     "Insert order: {}, Limit: {}, Side: {:?}, Volume: {:?}",
         //     order.id, order.limit, order.side, order.volume
         // );
-        self.match_order(&mut order);
+        self.match_order(&mut order).await;
         // println!("Matched, order: {:?}", order);
 
         if !order.is_filled() {
