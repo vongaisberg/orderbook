@@ -2,8 +2,12 @@ use std::cell::{Cell, RefCell, RefMut};
 use std::collections::hash_map::{Entry, OccupiedEntry};
 use std::ops::Neg;
 use std::ptr::NonNull;
-use std::sync::mpsc::Sender;
+use tokio::sync::mpsc::Sender;
 
+use crate::exchange::commands::TradeCommand;
+use crate::risk::participant;
+
+use super::event::MatchingEngineEvent;
 use super::order_bucket::OrderBucket;
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -23,23 +27,12 @@ impl Neg for OrderSide {
 }
 
 #[derive(Debug)]
-pub enum OrderEvent {
-    ///How much volume was filled and how much Value was payed for it
-    //id, volume, value
-    Filled(u64, u64, u64),
-    //id
-    Canceled(u64),
-}
-
-#[derive(Debug)]
 pub struct StandingOrder {
     pub limit: u64,
     pub volume: u64,
     pub side: OrderSide,
     pub id: u64,
-
-    pub filled_volume: Cell<u64>,
-    pub filled_value: Cell<u64>,
+    pub participant_id: u64,
 
     pub next: Option<NonNull<Box<StandingOrder>>>,
     pub prev: Option<NonNull<Box<StandingOrder>>>,
@@ -52,15 +45,19 @@ impl PartialEq for StandingOrder {
 }
 
 impl StandingOrder {
-    pub fn new(id: u64, limit: u64, volume: u64, side: OrderSide) -> StandingOrder {
+    pub fn new(
+        id: u64,
+        participant_id: u64,
+        limit: u64,
+        volume: u64,
+        side: OrderSide,
+    ) -> StandingOrder {
         StandingOrder {
             limit,
             volume,
             side,
             id,
-            //event_sender: event_sender,
-            filled_volume: Cell::new(0),
-            filled_value: Cell::new(0),
+            participant_id,
 
             next: None,
             prev: None,
@@ -86,28 +83,25 @@ impl StandingOrder {
     }
 
     pub fn remaining_volume(&self) -> u64 {
-        self.volume - self.filled_volume.get()
+        self.volume
     }
 
     //Will fill the order as much as possible and return how much fit in
     //Price ist just to set the filled_value correctly
-    pub fn fill(&self, volume: u64, price: u64, sender: &Option<Sender<OrderEvent>>) -> u64 {
+    pub fn fill(&mut self, volume: u64, price: u64, sender: &Sender<MatchingEngineEvent>) -> u64 {
         //println!("Own volume: {}, Incoming volume: {}", *self.remaining_volume(), *volume);
+
         if self.remaining_volume() <= volume {
             let old_volume = self.remaining_volume();
             //Fill order completely
-            self.filled_volume.set(self.volume);
-            self.filled_value
-                .set(self.filled_value.get() + old_volume * price);
+            self.volume = 0;
             self.notify(old_volume, old_volume * price, sender);
 
             //Return what did fit in
             old_volume
         } else {
             //Fill as much as possible
-            self.filled_volume.set(self.filled_volume.get() + volume);
-            self.filled_value
-                .set(self.filled_value.get() + (volume * price));
+            self.volume -= volume;
 
             self.notify(volume, volume * price, sender);
             //Return volume, because everything fit in
@@ -132,13 +126,23 @@ impl StandingOrder {
 
     /// Call the callback function
     /// Execute this whenever the order state changes
-    pub fn notify(&self, fill_volume: u64, fill_value: u64, sender: &Option<Sender<OrderEvent>>) {
-        if let Some(sender) = sender {
-            sender.send(OrderEvent::Filled(
-                self.id,
-                self.filled_volume.get(),
-                self.filled_value.get(),
-            ));
-        }
+    pub fn notify(&self, fill_volume: u64, fill_value: u64, sender: &Sender<MatchingEngineEvent>) {
+        sender.send(MatchingEngineEvent::Filled(
+            self.id,
+            fill_volume,
+            fill_value,
+        ));
+    }
+}
+
+impl From<TradeCommand> for StandingOrder {
+    fn from(value: TradeCommand) -> Self {
+        Self::new(
+            value.id,
+            value.participant_id,
+            value.limit,
+            value.volume,
+            value.side,
+        )
     }
 }

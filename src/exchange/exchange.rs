@@ -1,23 +1,81 @@
-use crate::exchange::account::Account;
-use crate::exchange::asset::Asset;
 use crate::exchange::commands::OrderCommand;
+use crate::order_handling::event::MatchingEngineEvent;
 use crate::order_handling::order::*;
 use crate::order_handling::order_book::OrderBook;
+use crate::processor::order_book_processor::OrderBookProcessor;
+use crate::processor::risk_engine_processor::RiskEngineProcessor;
+use crate::risk::router::risk_router;
 
 use std::collections::HashMap;
-use std::sync::RwLock;
+use tokio::sync::mpsc::{channel, Receiver, Sender};
+use tokio::sync::RwLock;
+
+use super::asset::Symbol;
+use super::exchange_settings::ExchangeSettings;
 
 const ORDER_BOOK_COUNT: usize = 1;
 #[derive(Default)]
 pub struct Exchange {
     //pub accounts: RwLock<HashMap<u64, Account>>,
     //pub assets: RwLock<HashMap<&'a str, Asset>>,
-    pub orderbooks: [OrderBook; ORDER_BOOK_COUNT],
+    pub settings: ExchangeSettings,
+    order_senders: Vec<Sender<OrderCommand>>,
 }
 
 impl Exchange {
-    pub fn new() -> Self {
-        Self::default()
+    pub fn new(settings: ExchangeSettings) -> Self {
+        let mut ex = Exchange::default();
+        ex.settings = settings.clone();
+
+        let mut stage_1_senders = Vec::new();
+        let mut stage_1_receivers = Vec::new();
+        let mut stage_2_senders = Vec::new();
+        let mut stage_2_receivers = Vec::new();
+        let mut stage_3_senders = Vec::new();
+        let mut stage_3_receivers = Vec::new();
+        //Create Channels
+        // Stage 1: One per risk engine shard:
+        for i in 0..settings.risk_engine_shards {
+            let (tx, rx) = channel::<OrderCommand>(100);
+            stage_1_senders.push(tx);
+            stage_1_receivers.push(rx);
+        }
+        ex.order_senders = stage_1_senders;
+        // Stage 2: One per book
+        for i in 0..settings.symbols.len() {
+            let (tx, rx) = channel::<OrderCommand>(1000);
+            stage_2_senders.push(tx);
+            stage_2_receivers.push(rx);
+        }
+        // Stage 3: One per risk engine shard
+        for i in 0..settings.risk_engine_shards {
+            let (tx, rx) = channel::<MatchingEngineEvent>(100);
+            stage_3_senders.push(tx);
+            stage_3_receivers.push(rx);
+        }
+
+        //Create risk engines
+        for i in 0..settings.risk_engine_shards {
+            let rec = stage_1_receivers.remove(i as usize);
+            let ev_rec = stage_3_receivers.remove(i as usize);
+            let senders = stage_2_senders.clone();
+            tokio::spawn(async {
+                let mut risk_engine = RiskEngineProcessor::new();
+                risk_engine.run(rec, senders, ev_rec);
+            });
+        }
+
+        // Create Order Book Processors for each symbol
+        for (i, symbol) in settings.symbols.clone().iter().enumerate() {
+            let rev = stage_2_receivers.remove(i as usize);
+            let send = stage_3_senders.clone();
+            let set = settings.clone();
+            tokio::spawn(async move {
+                OrderBookProcessor::new(set).run(rev, send);
+            });
+        }
+
+        ex
     }
     /*
             pub fn add_account(&self, acc: Account) {
@@ -43,20 +101,13 @@ impl Exchange {
             }
         }
     */
-    pub fn trade(&mut self, order_command: &OrderCommand) {
-        match order_command {
-            OrderCommand::Trade(trade) => {
-                //self.check_asset_existance(trade.ticker)?;
-                let book = &mut (self.orderbooks)[trade.ticker];
-                // let id = book.increment_id();
-                // let order = StandingOrder::new(id as u64, trade.limit, trade.volume, trade.side.clone());
-                book.insert_order(trade);
-            }
-            OrderCommand::Cancel(cancel) => {
-                let book = &mut self.orderbooks[cancel.ticker];
-                book.cancel_order(cancel.order_id);
-            }
-        }
+    pub fn trade(&mut self, order_command: OrderCommand) {
+        let participant_id = match order_command {
+            OrderCommand::Trade(trade) => trade.participant_id,
+            OrderCommand::Cancel(cancel) => cancel.participant_id,
+        };
+        let shard = risk_router(&self.settings, &participant_id);
+        self.order_senders[shard].send(order_command);
     }
     /*
     /// Check if an assets with that ticker exists on this exchange

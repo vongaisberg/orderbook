@@ -1,6 +1,8 @@
 use crate::exchange::commands::TradeCommand;
+use crate::exchange::exchange_settings::ExchangeSettings;
 use crate::order_handling::order::*;
 use crate::order_handling::order_bucket::*;
+use crate::risk::router::risk_router;
 extern crate libc;
 
 use linked_hash_map::VacantEntry;
@@ -18,13 +20,14 @@ use std::mem::MaybeUninit;
 use std::ops::Drop;
 use std::rc::Rc;
 use std::result::Result::*;
-use std::sync::mpsc::Sender;
+use tokio::sync::mpsc::Sender;
 use std::{collections::HashMap, ptr::NonNull};
 
 use fxhash::FxBuildHasher;
 
 use crate::order_handling::public_list::*;
 
+use super::event::MatchingEngineEvent;
 use super::order_bucket;
 
 const MAX_NUMBER_OF_ORDERS: usize = 10_000_000;
@@ -50,17 +53,19 @@ pub struct OrderBook {
     /// Store orders sorted by price
     pub bucket_array: [Box<OrderBucket>; MAX_PRICE],
 
-    pub event_sender: Option<Sender<OrderEvent>>,
+    event_senders: Vec<Sender<MatchingEngineEvent>>,
+
+    settings: ExchangeSettings,
 }
 
-impl Default for OrderBook {
-    fn default() -> OrderBook {
+impl OrderBook {
+    pub fn new(settings: ExchangeSettings, event_senders: Vec<Sender<MatchingEngineEvent>>) -> OrderBook {
         info!(
             "Size of order_array: {}MB",
             mem::size_of::<[Box<OrderBucket>; MAX_PRICE]>() as f32 / 1000000f32
         );
 
-        let mut price = 1;
+        let mut price = 0;
         //Fill orders_array with OrderBuckets
         let orders_array = {
             let mut data: [MaybeUninit<Box<OrderBucket>>; MAX_PRICE] =
@@ -70,8 +75,9 @@ impl Default for OrderBook {
             // we have a memory leak, but there is no memory safety issue.
             for elem in &mut data[..] {
                 elem.write(Box::new(OrderBucket::new(price)));
+
+                price += 1;
             }
-            price += 1;
 
             // Everything is initialized. Transmute the array to the
             // initialized type.
@@ -91,14 +97,13 @@ impl Default for OrderBook {
             ),
             highest_id: 0,
             bucket_array: orders_array,
-            event_sender: None,
+            event_senders,
+            settings,
         }
     }
-}
 
-impl OrderBook {
-    pub fn new() -> OrderBook {
-        Default::default()
+    pub fn get_sender(&self, participant_id: u64) -> &Sender<MatchingEngineEvent>{
+        &self.event_senders[risk_router(&self.settings, &participant_id)]
     }
 
     /// Try to instantly match an order as it is coming in
@@ -108,12 +113,10 @@ impl OrderBook {
     ///
     ///
     fn match_order(&mut self, order: &mut StandingOrder) {
-        // Volume that remains in the incoming order
-        let mut vol = order.volume;
-        // Value of the already matched volume
-        let mut val = 0;
+        let mut filled_value = 0;
+        let original_volume = order.volume;
 
-        while vol > 0 {
+        while order.volume > 0 {
             let best_price = match order.side {
                 OrderSide::ASK => {
                     if self.max_bid_price < order.limit {
@@ -137,17 +140,17 @@ impl OrderBook {
             let mut empty = true;
             //Loop until bucket is empty
             while let Some((matched_volume, canceled_order)) =
-                OrderBucket::match_orders(vol, self, best_price)
+                OrderBucket::match_orders(order.volume, self, best_price)
             {
                 //Loop gets entered at least once, so bucket is not empty
                 empty = false;
                 // println!("Matched volume: {}", matched_volume);
-                vol -= matched_volume;
-                val += matched_volume * best_price;
+                order.volume -= matched_volume;
+                filled_value += matched_volume * best_price;
                 if let Some(canceled_order) = canceled_order {
                     self.cancel_order(canceled_order)
                 }
-                if vol == 0 {
+                if order.volume == 0 {
                     break;
                 }
             }
@@ -159,23 +162,28 @@ impl OrderBook {
             }
         }
 
-        let new_filled_vol = order.volume - vol;
-
-        order.filled_volume.set(new_filled_vol);
-        order.filled_value.set(val);
-        if new_filled_vol > 0 {
-            order.notify(new_filled_vol, val, &self.event_sender);
+        if filled_value > 0 {
+            order.notify(
+                original_volume - order.volume,
+                filled_value,
+                &self.get_sender(order.participant_id),
+            );
         }
     }
 
     pub fn insert_order(&mut self, trade: &TradeCommand) {
+        let mut order = StandingOrder::new(
+            trade.id,
+            trade.participant_id,
+            trade.limit,
+            trade.volume,
+            trade.side,
+        );
+
         // println!(
         //     "Insert order: {}, Limit: {}, Side: {:?}, Volume: {:?}",
         //     order.id, order.limit, order.side, order.volume
         // );
-
-        let mut order =
-            StandingOrder::new(self.increment_id(), trade.limit, trade.volume, trade.side);
         self.match_order(&mut order);
         // println!("Matched, order: {:?}", order);
 

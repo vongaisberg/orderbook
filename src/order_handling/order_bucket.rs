@@ -7,7 +7,7 @@ use std::borrow::{Borrow, BorrowMut};
 use std::collections::hash_map::OccupiedEntry;
 use std::collections::{LinkedList, VecDeque};
 use std::ptr::NonNull;
-use std::sync::mpsc::Sender;
+use tokio::sync::mpsc::Sender;
 use std::{cmp::Ordering, time};
 //use std::hash::{Hash, Hasher};
 use std::rc::{Rc, Weak};
@@ -103,25 +103,24 @@ impl OrderBucket {
         best_price: u64,
     ) -> Option<(u64, Option<u64>)> {
         let bucket = &mut book.bucket_array[best_price as usize];
-        let mut unmatched_volume = volume;
 
         if bucket.is_empty() {
             return None;
         }
         // std::thread::sleep(time::Duration::from_millis(100));
-        let order = unsafe { bucket.head.unwrap().as_ref() };
+        let order = unsafe { bucket.head.unwrap().as_mut() };
         // println!("Matching with: {:?}", order);
 
-        let filled_volume = order.fill(unmatched_volume, bucket.price, &book.event_sender);
+        let filled_volume = order.fill(volume, bucket.price, &book.get_sender(order.participant_id));
         // println!("Matched with: {:?}", order);
-        unmatched_volume -= filled_volume;
-        let mut canceled_order = None;
-        if order.is_filled() {
+        let canceled_order = if order.is_filled() {
             // println!("Marked as filled, removing from bucket");
-            canceled_order = Some(order.id)
-        }
+            Some(order.id)
+        } else {
+            None
+        };
 
-        Some((volume - unmatched_volume, canceled_order))
+        Some((filled_volume, canceled_order))
     }
 
     // pub fn print_list(&self) -> String {
