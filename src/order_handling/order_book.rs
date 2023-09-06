@@ -5,6 +5,8 @@ use crate::order_handling::order_bucket::*;
 use crate::risk::router::risk_router;
 extern crate libc;
 
+use crossbeam::channel::Sender;
+use fxhash::FxBuildHasher;
 use linked_hash_map::VacantEntry;
 use log::{debug, error, info, trace, warn};
 use std::alloc::{alloc, dealloc, Layout};
@@ -21,19 +23,20 @@ use std::ops::Drop;
 use std::rc::Rc;
 use std::result::Result::*;
 use std::{collections::HashMap, ptr::NonNull};
-use tokio::sync::mpsc::Sender;
-
-use fxhash::FxBuildHasher;
 
 use crate::order_handling::public_list::*;
 
+use super::event::DbEvent;
 use super::event::MatchingEngineEvent;
+use super::event::Trade;
 use super::order_bucket;
 
 const MAX_NUMBER_OF_ORDERS: usize = 10_000_000;
 const MAX_PRICE: usize = 2_000;
 
 pub struct OrderBook {
+    /// Symbol which is traded here
+    symbol_id: usize,
     /// Maximum price allowed on this orderbook
     max_price: u64,
 
@@ -54,20 +57,18 @@ pub struct OrderBook {
     pub bucket_array: [Box<OrderBucket>; MAX_PRICE],
 
     event_senders: Vec<Sender<MatchingEngineEvent>>,
+    db_sender: Sender<DbEvent>,
 
     settings: ExchangeSettings,
 }
 
 impl OrderBook {
     pub fn new(
+        symbol_id: usize,
         settings: ExchangeSettings,
         event_senders: Vec<Sender<MatchingEngineEvent>>,
+        db_sender: Sender<DbEvent>,
     ) -> OrderBook {
-        info!(
-            "Size of order_array: {}MB",
-            mem::size_of::<[Box<OrderBucket>; MAX_PRICE]>() as f32 / 1000000f32
-        );
-
         let mut price = 0;
         //Fill orders_array with OrderBuckets
         let orders_array = {
@@ -91,6 +92,7 @@ impl OrderBook {
         // let layout = Layout::new::<[Order; MAX_NUMBER_OF_ORDERS]>();
 
         OrderBook {
+            symbol_id,
             max_price: MAX_PRICE as u64,
             min_ask_price: MAX_PRICE as u64,
             max_bid_price: 0,
@@ -101,6 +103,7 @@ impl OrderBook {
             highest_id: 0,
             bucket_array: orders_array,
             event_senders,
+            db_sender,
             settings,
         }
     }
@@ -115,7 +118,7 @@ impl OrderBook {
     /// The incoming order will possibly take liquidity from the orderbook.
     ///
     ///
-    async fn match_order(&mut self, order: &mut StandingOrder) {
+    fn match_order(&mut self, order: &mut StandingOrder) {
         let mut filled_value = 0;
         let original_volume = order.volume;
 
@@ -143,7 +146,7 @@ impl OrderBook {
             let mut empty = true;
             //Loop until bucket is empty
             while let Some((matched_volume, canceled_order)) =
-                OrderBucket::match_orders(order.volume, self, best_price).await
+                OrderBucket::match_orders(&order, self, best_price)
             {
                 //Loop gets entered at least once, so bucket is not empty
                 empty = false;
@@ -166,15 +169,16 @@ impl OrderBook {
         }
 
         if filled_value > 0 {
+            // Notify the order
             order.notify(
                 original_volume - order.volume,
                 filled_value,
                 self.get_sender(order.participant_id),
-            ).await;
+            );
         }
     }
 
-    pub async fn insert_order(&mut self, trade: &TradeCommand) {
+    pub fn insert_order(&mut self, trade: &TradeCommand) {
         let mut order = StandingOrder::new(
             trade.id,
             trade.participant_id,
@@ -187,7 +191,7 @@ impl OrderBook {
         //     "Insert order: {}, Limit: {}, Side: {:?}, Volume: {:?}",
         //     order.id, order.limit, order.side, order.volume
         // );
-        self.match_order(&mut order).await;
+        self.match_order(&mut order);
         // println!("Matched, order: {:?}", order);
 
         if !order.is_filled() {

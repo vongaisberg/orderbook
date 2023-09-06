@@ -114,7 +114,7 @@ impl RiskEngine {
 
         match user.assets.get(&pessimistic_asset) {
             Some(user_asset) => {
-                if user_asset >= &trade_command.volume {
+                if user_asset >= &pessimistic_value {
                     //Pessimistically reduce the assets by the highest possible amount
                     user.assets
                         .insert(pessimistic_asset, user_asset - pessimistic_value);
@@ -153,9 +153,9 @@ impl RiskEngine {
                 let (pessimistic_asset, pessimistic_value) =
                     TradeCommand::historic_pessimistic(order.side, order.limit, symbol, volume);
 
-                let (rising_asset, rising_value) = match order.side {
-                    OrderSide::BID => (symbol.quote_asset, volume),
-                    OrderSide::ASK => (symbol.base_asset, value),
+                let (rising_asset, rising_value, falling_value) = match order.side {
+                    OrderSide::BID => (symbol.quote_asset, volume, value),
+                    OrderSide::ASK => (symbol.base_asset, value, volume),
                 };
                 let rising_asset = participant
                     .assets
@@ -168,7 +168,8 @@ impl RiskEngine {
                     .expect("Order filled for user asset not known to the risk engine.");
 
                 // Update the asset to reflect the value actually paid
-                *asset -= pessimistic_value - value;
+                let difference = pessimistic_value - falling_value;
+                *asset += difference;
             }
             MatchingEngineEvent::Canceled(id) => {
                 //Add the pessimistically removed assets back
@@ -197,7 +198,7 @@ impl RiskEngine {
                     .expect("Order filled for user asset not known to the risk engine.");
 
                 // Update the asset to reflect the value actually paid
-                *asset -= pessimistic_value;
+                *asset += pessimistic_value;
             }
         }
     }

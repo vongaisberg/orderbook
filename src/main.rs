@@ -24,7 +24,10 @@ use crate::order_handling::order::*;
 use crate::order_handling::order_book::*;
 use crate::order_handling::order_bucket::OrderBucket;
 use crate::risk::*;
+use futures::executor::block_on;
+use log::LevelFilter;
 use rand_distr::{Distribution, Normal};
+use simple_logger::SimpleLogger;
 use std::rc::Rc;
 
 use rand::prelude::*;
@@ -45,14 +48,20 @@ use order_handling::{order, public_list::*};
 
 use tokio::sync::mpsc::channel;
 
+use std::sync::mpsc;
 
-#[tokio::main]
-async fn main() {
+fn main() {
+    SimpleLogger::new()
+        .with_level(LevelFilter::Info)
+        .init()
+        .unwrap();
 
-    test_exchange().await;
+    // benchmark_exchange();
+    test();
+    std::thread::sleep(Duration::from_secs(3));
 }
 
-const COUNT: usize = 10000;
+const COUNT: usize = 10_000_000;
 const SECOND_COUNT: usize = 1;
 static mut CANCELED: u64 = 0;
 
@@ -62,7 +71,7 @@ fn build_random_order_command(
     normal_bid: Normal<f64>,
     id: u64,
 ) -> OrderCommand {
-    let side = if rng.gen_bool(0.5) {
+    let side = if rng.gen_bool(0.3) {
         OrderSide::ASK
     } else {
         OrderSide::BID
@@ -77,10 +86,10 @@ fn build_random_order_command(
         })
     } else {
         OrderCommand::Trade(TradeCommand {
-            symbol: 0,
-            participant_id: 0,
+            symbol: rng.gen_range(0..2),
+            participant_id: rng.gen_range(0..4),
             side,
-            volume: rng.gen_range(1..2),
+            volume: rng.gen_range(1..5),
             limit: if side == OrderSide::ASK {
                 normal_ask.sample(rng) as u64
             } else {
@@ -93,7 +102,7 @@ fn build_random_order_command(
     }
 }
 
-async fn test_exchange() {
+fn benchmark_exchange() {
     let mut rng = thread_rng();
 
     let mut symbols = Vec::new();
@@ -102,10 +111,17 @@ async fn test_exchange() {
         base_asset: 0,
         quote_asset: 1,
     });
+    symbols.push(Symbol {
+        symbol_type: SymbolType::ExchangePair,
+        base_asset: 0,
+        quote_asset: 2,
+    });
 
     let settings = ExchangeSettings {
         symbols,
-        risk_engine_shards: 1,
+        risk_engine_shards: 4,
+        db_sync_speed: Duration::from_micros(500),
+        db_min_recv_timeout: Duration::from_micros(100),
     };
 
     let mut ex = Exchange::new(settings);
@@ -113,21 +129,12 @@ async fn test_exchange() {
     let normal_bid = Normal::new(200f64, 15f64).unwrap();
     let normal_ask = Normal::new(230f64, 15f64).unwrap();
 
-    let queue = unsafe {
-        let mut arr: Box<[OrderCommand; COUNT]> = Box::new(std::mem::uninitialized());
-
-        for (i, item) in arr[..].iter_mut().enumerate() {
-            std::ptr::write(
-                item,
-                build_random_order_command(&mut rng, normal_ask, normal_bid, i as u64),
-            );
-        }
-        arr
-    };
     let now = Instant::now();
 
     for i in 0..COUNT {
-        ex.trade(queue[i]).await;
+        ex.trade(build_random_order_command(
+            &mut rng, normal_ask, normal_bid, i as u64,
+        ));
     }
 
     println!(
@@ -140,58 +147,38 @@ async fn test_exchange() {
     );
 }
 
-fn test_order_bucket() {
-    /*
-    let mut rng = rand::thread_rng();
-    let mut bucket = OrderBucket::new(Price::new(500));
+fn test() {
+    let mut ex = Exchange::new(ExchangeSettings {
+        symbols: vec![Symbol {
+            symbol_type: SymbolType::ExchangePair,
+            base_asset: 0,
+            quote_asset: 1,
+        }],
+        risk_engine_shards: 1,
+        db_sync_speed: Duration::from_micros(500),
+        db_min_recv_timeout: Duration::from_micros(100),
+    });
 
-    let mut now = Instant::now();
+    let t = OrderCommand::Trade(TradeCommand {
+        id: 0,
+        participant_id: 0,
+        symbol: 0,
+        side: OrderSide::BID,
+        volume: 10,
+        limit: 5,
+        immediate_or_cancel: false,
+    });
+    ex.trade(t);
 
-    let mut order_vec = Vec::new();
+    let t = OrderCommand::Trade(TradeCommand {
+        id: 0,
+        participant_id: 0,
+        symbol: 0,
+        side: OrderSide::ASK,
+        volume: 5,
+        limit: 3,
+        immediate_or_cancel: false,
+    });
 
-    for _y in 0..100 {
-        let order = Rc::new(Order::new(
-            Price::new(500),
-            Volume::new(20),
-            OrderSide::ASK,
-            None,
-            false,
-        ));
-        bucket.insert_order(&order);
-        order_vec.push(order);
-    }
-    println!("Time for order placement: {}", now.elapsed().as_millis());
-    now = Instant::now();
-    println!(
-        "Bucket size:{}, total_volume:{:?}",
-        bucket.size, bucket.total_volume
-    );
-
-    for _x in 0..50 {
-        //bucket.remove_order(&(set_x[sort_x[x]] / 2 + set_y[sort_y[y]] / 2));
-        assert_eq!(bucket.match_orders(&Volume::new(5)), Volume::new(5));
-        /* bucket.insert_order(Order {
-                side: OrderSide::ASK,
-                limit: Price::new(500),
-                volume: Volume::new(10),
-                id: set_x[sort_x[x]] / 2 + set_y[sort_y[y + 500]] / 2,
-                callback: Some(callback),
-                filled_volume: Cell::new(0),
-        filled_value: Cell::new(Value::ZERO),
-            }) */
-    }
-
-    assert_eq!(bucket.total_volume, Volume::new(1750));
-    println!(
-        "Bucket size:{}, total_volume:{:?}",
-        bucket.size, bucket.total_volume
-    );
-
-    println!("Time for orderbook change: {}", now.elapsed().as_millis());
-    println!(
-        "Bucket size:{}, total_volume:{:?}",
-        bucket.size, bucket.total_volume
-    );
-    println!("Time: {}", now.elapsed().as_millis());
-    */
+    ex.trade(t);
 }

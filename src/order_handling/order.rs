@@ -2,7 +2,7 @@ use std::cell::{Cell, RefCell, RefMut};
 use std::collections::hash_map::{Entry, OccupiedEntry};
 use std::ops::Neg;
 use std::ptr::NonNull;
-use tokio::sync::mpsc::Sender;
+use crossbeam::channel::Sender;
 
 use crate::exchange::commands::TradeCommand;
 use crate::risk::participant;
@@ -103,24 +103,24 @@ impl StandingOrder {
 
     //Will fill the order as much as possible and return how much fit in
     //Price ist just to set the filled_value correctly
-    pub async fn fill(&mut self, volume: u64, price: u64, sender: &Sender<MatchingEngineEvent>) -> u64 {
+    pub fn fill(&mut self, taker: &StandingOrder, price: u64, sender: &Sender<MatchingEngineEvent>) -> u64 {
         //println!("Own volume: {}, Incoming volume: {}", *self.remaining_volume(), *volume);
 
-        if self.remaining_volume() <= volume {
+        if self.remaining_volume() <= taker.volume {
             let old_volume = self.remaining_volume();
             //Fill order completely
             self.volume = 0;
-            self.notify(old_volume, old_volume * price, sender).await;
+            self.notify(old_volume, old_volume * price, sender);
 
             //Return what did fit in
             old_volume
         } else {
             //Fill as much as possible
-            self.volume -= volume;
+            self.volume -= taker.volume;
 
-            self.notify(volume, volume * price, sender).await;
+            self.notify(taker.volume, taker.volume * price, sender);
             //Return volume, because everything fit in
-            volume
+            taker.volume
         }
     }
 
@@ -139,14 +139,14 @@ impl StandingOrder {
         }
     }
 
-    /// Call the callback function
+    /// Notify the risk engine about any change to the order
     /// Execute this whenever the order state changes
-    pub async fn notify(&self, fill_volume: u64, fill_value: u64, sender: &Sender<MatchingEngineEvent>) {
+    pub fn notify(&self, fill_volume: u64, fill_value: u64, sender: &Sender<MatchingEngineEvent>) {
         let _ = sender.send(MatchingEngineEvent::Filled(
             self.id,
             fill_volume,
             fill_value,
-        )).await;
+        ));
     }
 }
 

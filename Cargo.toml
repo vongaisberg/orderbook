@@ -16,3 +16,12 @@ fxhash = "0.2.1"
 rand_distr = "0.4.3"
 log = "0.4.17"
 futures = "0.3.28"
+async-channel = "1.8.0"
+crossbeam-channel = "0.5.8"
+crossbeam = "0.8.2"
+redis = "0.23.0"
+# simple_logger = "4.2.0"
+
+[dependencies.simple_logger]
+default-features = false
+features = ["colors"]
