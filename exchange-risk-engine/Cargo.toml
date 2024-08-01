@@ -1,0 +1,12 @@
+[package]
+name = "exchange-risk-engine"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+
+exchange_lib = { path = "../exchange_lib" }
+log = "0.4.20"
+redis = "0.23.3"
